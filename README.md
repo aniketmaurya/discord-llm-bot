@@ -2,5 +2,6 @@
 
 Create Discord bots using LLMs.
 
-1. Create a Discord bot. [Learn more](https://discordpy.readthedocs.io/en/stable/discord.html)
-1. 
+1. Create a Discord bot and install to your channel [Learn more](https://discordpy.readthedocs.io/en/stable/discord.html)
+1. Initalize embedding model [here](./src/qna/model.py)
+1. Run [app.py](./src/app.py)
