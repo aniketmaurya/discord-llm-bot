@@ -1,0 +1,5 @@
+.env
+.mypy_cache
+.ipynb_checkpoints
+.chroma
+pl-docs
