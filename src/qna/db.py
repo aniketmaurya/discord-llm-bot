@@ -1,13 +1,19 @@
-from langchain.document_loaders import UnstructuredHTMLLoader as HTMLLoader
-from langchain.vectorstores import Chroma
-from langchain.embeddings import HuggingFaceEmbeddings
 from glob import glob
+
+from langchain.document_loaders import UnstructuredHTMLLoader as HTMLLoader
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import Chroma
 from tqdm.auto import tqdm
+
+from qna.model import create_embedding
+
 from .const import MODEL_NAME
+
 
 def create_loaders():
     files = glob("pl-docs/*.html")
     return [HTMLLoader(file) for file in files]
+
 
 def create_documents():
     documents = []
@@ -23,6 +29,6 @@ def create_documents():
 
 def create_db():
     documents, ids = create_documents()
-    embeddings = HuggingFaceEmbeddings(model_name=MODEL_NAME)
+    embeddings = create_embedding()
     db = Chroma.from_documents(documents, embeddings, ids=ids)
     return db, documents, embeddings

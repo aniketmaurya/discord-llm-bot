@@ -1,9 +1,9 @@
-# This example requires the 'message_content' intent.
+import os
 
 import discord
-from qna.retriever import create_retriever
-import os
 from dotenv import load_dotenv
+
+from qna.retriever import create_retriever
 
 load_dotenv()
 
@@ -13,11 +13,12 @@ TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 
 class MyClient(discord.Client):
     retriever = create_retriever()
+
     def search_document(self, query):
         return self.retriever.get_relevant_documents(query=query)[0].page_content
 
     async def on_ready(self):
-        
+
         print(f"Logged on as {self.user}!")
 
     async def on_message(self, message):
