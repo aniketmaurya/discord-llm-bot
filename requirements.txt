@@ -1,2 +1,3 @@
 discord.py
 unstructured
+langchain
