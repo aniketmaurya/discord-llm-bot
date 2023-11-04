@@ -1,14 +1,14 @@
-import os
-from discord import Message, User
 import asyncio
+import os
 from concurrent.futures import ThreadPoolExecutor as Executor
-from loguru import logger
 
 import discord
+from discord import Message, User
 from dotenv import load_dotenv
+from loguru import logger
 
-from discord_llm.retriever import LightningRetriever
 from discord_llm.llms import LlamaCppLLM
+from discord_llm.retriever import LightningRetriever
 
 load_dotenv()
 

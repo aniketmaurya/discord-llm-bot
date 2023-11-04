@@ -1,17 +1,17 @@
-from chromadb.utils import embedding_functions
-import lancedb
-
-from loguru import logger
-import pandas as pd
 from glob import glob
-from rich.progress import track
-from rich import print
 from os.path import basename
+from pathlib import Path
 
 import chromadb
-from pathlib import Path
+import lancedb
+import pandas as pd
+import torch
+from chromadb.utils import embedding_functions
 from lancedb.embeddings import EmbeddingFunctionRegistry
-from lancedb.pydantic import Vector, LanceModel
+from lancedb.pydantic import LanceModel, Vector
+from loguru import logger
+from rich import print
+from rich.progress import track
 
 MODEL_NAME = "all-distilroberta-v1"
 DB_PATH = "db/lancedb-test"
@@ -19,7 +19,7 @@ TABLE_NAME = COLLECTION_NAME = "test"
 
 registry = EmbeddingFunctionRegistry.get_instance()
 func = registry.get("sentence-transformers").create(
-    name="all-distilroberta-v1", device="cuda"
+    name="all-distilroberta-v1", device="cuda" if torch.cuda.is_available() else "cpu"
 )
 
 

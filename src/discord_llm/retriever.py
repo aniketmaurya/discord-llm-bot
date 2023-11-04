@@ -1,7 +1,7 @@
-from .db import create_db
 from chromadb.utils import embedding_functions
 
-from .pl_db import get_collection, MODEL_NAME, get_table, Document
+from .db import create_db
+from .pl_db import MODEL_NAME, Document, get_collection, get_table
 
 DEFAULT_DB_ENGINE = "lancedb"
 
