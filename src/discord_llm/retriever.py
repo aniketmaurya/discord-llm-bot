@@ -1,4 +1,9 @@
 from .db import create_db
+from chromadb.utils import embedding_functions
+
+from .pl_db import get_collection, MODEL_NAME, get_table, Document
+
+DEFAULT_DB_ENGINE = "lancedb"
 
 
 def create_retriever():
@@ -8,15 +13,19 @@ def create_retriever():
 
 
 class LightningRetriever:
-    from .pl_db import get_collection, MODEL_NAME
-    from chromadb.utils import embedding_functions
+    def __init__(self, engine_type: str = DEFAULT_DB_ENGINE):
+        self.engine_type = engine_type
+        if engine_type == "chromadb":
+            self.collection = get_collection()
+            self.sentence_transformer_ef = (
+                embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=MODEL_NAME
+                )
+            )
+        elif engine_type == "lancedb":
+            self.table = get_table()
 
-    collection = get_collection()
-    sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name=MODEL_NAME
-    )
-
-    def __call__(self, query: str):
+    def chroma_engine(self, query: str):
         query_texts = [query]
         query_embeddings = self.sentence_transformer_ef(query_texts)
         result = self.collection.query(query_embeddings=query_embeddings, n_results=1)
@@ -26,3 +35,21 @@ class LightningRetriever:
             "distance": result["distances"][0][0],
             "source": result["metadatas"][0][0]["source"],
         }
+
+    def lance_engine(self, query: str):
+        result: Document = (
+            self.table.search(query, vector_column_name="embedding")
+            .limit(1)
+            .to_list()[0]
+        )
+        return {
+            "document": result["document"],
+            "distance": result["_distance"],
+            "source": result["source"],
+        }
+
+    def __call__(self, query: str):
+        if self.engine_type == "lancedb":
+            return self.lance_engine(query=query)
+        else:
+            return self.chroma_engine(query=query)

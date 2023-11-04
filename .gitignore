@@ -145,3 +145,4 @@ lightning_logs/
 .chroma
 pl-docs
 db/
+*.gguf

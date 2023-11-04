@@ -22,11 +22,16 @@ class MyClient(discord.Client):
     pool = Executor(1)
 
     def run_in_loop(self, query, document):
-        result = self.llm(query=query, document=document,
-                          stop=["Question:", "Answer:",],
-                          max_tokens=1024,
-                          temperature=0.2
-                          )
+        result = self.llm(
+            query=query,
+            document=document,
+            stop=[
+                "Question:",
+                "Answer:",
+            ],
+            max_tokens=1024,
+            temperature=0.2,
+        )
         return result
 
     async def on_ready(self):

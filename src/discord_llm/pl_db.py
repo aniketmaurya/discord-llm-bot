@@ -1,4 +1,6 @@
 from chromadb.utils import embedding_functions
+import lancedb
+
 from loguru import logger
 import pandas as pd
 from glob import glob
@@ -8,11 +10,23 @@ from os.path import basename
 
 import chromadb
 from pathlib import Path
-
+from lancedb.embeddings import EmbeddingFunctionRegistry
+from lancedb.pydantic import Vector, LanceModel
 
 MODEL_NAME = "all-distilroberta-v1"
-DB_PATH = "./db"
-COLLECTION_NAME = "test"
+DB_PATH = "db/lancedb-test"
+TABLE_NAME = COLLECTION_NAME = "test"
+
+registry = EmbeddingFunctionRegistry.get_instance()
+func = registry.get("sentence-transformers").create(
+    name="all-distilroberta-v1", device="cuda"
+)
+
+
+class Document(LanceModel):
+    document: str = func.SourceField()
+    embedding: Vector(func.ndims()) = func.VectorField()
+    source: str
 
 
 def get_collection() -> chromadb.Collection:
@@ -47,3 +61,10 @@ def get_collection() -> chromadb.Collection:
             )
 
     return collection
+
+
+def get_table():
+    uri = DB_PATH[:]
+    db = lancedb.connect(uri)
+    table = db.open_table(TABLE_NAME)
+    return table
