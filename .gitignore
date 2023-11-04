@@ -144,3 +144,4 @@ lightning_logs/
 .ipynb_checkpoints
 .chroma
 pl-docs
+db/
