@@ -11,11 +11,12 @@ from pathlib import Path
 
 
 MODEL_NAME = "all-distilroberta-v1"
+DB_PATH = "./db"
 COLLECTION_NAME = "test"
 
 
 def get_collection() -> chromadb.Collection:
-    chroma_client = chromadb.PersistentClient(path=str(Path.home() / "db"))
+    chroma_client = chromadb.PersistentClient(DB_PATH)
 
     try:
         collection = chroma_client.get_collection(name=COLLECTION_NAME)

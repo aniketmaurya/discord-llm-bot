@@ -1,4 +1,5 @@
 from typing import Any
+import os
 from loguru import logger
 from pathlib import Path
 from llama_cpp import Llama
@@ -18,6 +19,8 @@ class LlamaCppLLM:
         *args,
         **kwargs,
     ):
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"{model_path} not found.")
         if lazy:
             self.llm = None
         else:

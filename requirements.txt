@@ -5,3 +5,4 @@ lancedb
 llama-cpp-python
 loguru
 chromadb
+sentence_transformers
