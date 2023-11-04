@@ -8,7 +8,7 @@ This Discord bot is designed to helps answer questions based on its knowledge ba
 1. Run [lightning_learner_bot.py](./src/lightning_learner_bot.py)
 
 ## Demo
-![](./assets/bot-demo-min.png)
+![](./assets/discord-bot.png)
 
 
 ## Getting Started
