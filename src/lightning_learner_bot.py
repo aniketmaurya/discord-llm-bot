@@ -15,7 +15,6 @@ class MyClient(discord.Client):
     retriever = LightningRetriever()
 
     async def on_ready(self):
-
         print(f"Logged on as {self.user}!")
 
     async def on_message(self, message):
@@ -30,10 +29,10 @@ class MyClient(discord.Client):
             distance = result["distance"]
             source = result["source"]
 
-            if distance >=0.6:
+            if distance >= 0.6:
                 thought = f"It seems like I am not so sure about this question but I have tried my best to answer based on my knowledge. I am reading **{source}** to formulate an answer for you. Please give me a moment..."
                 await message.reply(thought, mention_author=True)
-            
+
             await message.reply(document[:2000], mention_author=True)
 
 

@@ -18,7 +18,6 @@ class MyClient(discord.Client):
         return self.retriever.get_relevant_documents(query=query)[0].page_content
 
     async def on_ready(self):
-
         print(f"Logged on as {self.user}!")
 
     async def on_message(self, message):
