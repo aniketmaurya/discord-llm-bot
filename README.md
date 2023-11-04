@@ -2,12 +2,16 @@
 
 LLM powered Discord Bot that works seamlessly on CPU. Powered by LanceDB and Llama.cpp.
 
-This Discord bot is designed to helps answer questions based on its knowledge base. By default, it contains knowledge of PyTorch Lightning and Lit-GPT.
+This Discord bot is designed to helps answer questions based on a knowledge base (vector db). By default, it contains knowledge of PyTorch Lightning and Lit-GPT.
+
+```mermaid
+graph LR
+    A((User Query)) --> B((Convert to Embedding))
+    B --> C((Find Similar Document<br>from Vector Database))
+    C --> D((Use Retrieved Document<br>as Context to Answer Question<br>using Mistral 7B LLM))
+```
 
 
-1. Run [lightning_learner_bot.py](./src/lightning_learner_bot.py)
-
-## Demo
 ![](./assets/discord-bot.png)
 
 
