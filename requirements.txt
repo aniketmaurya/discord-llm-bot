@@ -3,3 +3,5 @@ unstructured
 langchain
 lancedb
 llama-cpp-python
+loguru
+chromadb
