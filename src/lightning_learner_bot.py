@@ -50,10 +50,9 @@ class MyClient(discord.Client):
                 self.pool, self.run_in_loop, query, document
             )
             output = (
-                (f"This is what I was able to understand from {source}. "
-                 "I still have a lot to learn, so please excuse me if I am wrong...\n\n")
-                + llm_output
-            )
+                f"This is what I was able to understand from {source}. "
+                "I still have a lot to learn, so please excuse me if I am wrong...\n\n"
+            ) + llm_output
             try:
                 await message.reply(output, mention_author=True)
             except Exception as e:
