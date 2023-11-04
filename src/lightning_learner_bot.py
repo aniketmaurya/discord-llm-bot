@@ -65,9 +65,6 @@ class MyClient(discord.Client):
         if message.author.id == self.user.id:
             return
 
-        logger.info(message.content)
-        logger.info(self.user.mention)
-        # message.content.startswith("!help"):
         if message.content.startswith(self.user.mention):
             query = message.content.replace(self.user.mention, "")
             await self.generate_answer(query, message)
