@@ -3,7 +3,7 @@ import os
 import discord
 from dotenv import load_dotenv
 
-from qna.retriever import create_retriever
+from discord_llm.retriever import create_retriever
 
 load_dotenv()
 

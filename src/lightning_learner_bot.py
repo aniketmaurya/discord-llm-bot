@@ -7,8 +7,8 @@ from loguru import logger
 import discord
 from dotenv import load_dotenv
 
-from qna.retriever import LightningRetriever
-from qna.llms import LlamaCppLLM
+from discord_llm.retriever import LightningRetriever
+from discord_llm.llms import LlamaCppLLM
 
 load_dotenv()
 
@@ -28,16 +28,8 @@ class MyClient(discord.Client):
     async def on_ready(self):
         print(f"Logged on as {self.user}!")
 
-    async def on_message(self, message: Message):
-        if message.author.id == self.user.id:
-            return
-
-        logger.info(message.content)
-        logger.info(self.user.mention)
-        # message.content.startswith("!help"):
-        if message.content.startswith(self.user.mention):
-            await message.channel.typing()
-            query = message.content.replace(self.user.mention, "")
+    async def generate_answer(self, query: str, message: Message):
+        async with message.channel.typing():
             result = self.retriever(query=query)
             document = result["document"]
             distance = result["distance"]
@@ -68,6 +60,17 @@ class MyClient(discord.Client):
                 await message.reply(
                     "Sorry I faced some issue while getting back to you!"
                 )
+
+    async def on_message(self, message: Message):
+        if message.author.id == self.user.id:
+            return
+
+        logger.info(message.content)
+        logger.info(self.user.mention)
+        # message.content.startswith("!help"):
+        if message.content.startswith(self.user.mention):
+            query = message.content.replace(self.user.mention, "")
+            await self.generate_answer(query, message)
 
 
 intents = discord.Intents.default()

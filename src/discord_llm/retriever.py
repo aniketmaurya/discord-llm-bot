@@ -1,4 +1,4 @@
-from qna.db import create_db
+from .db import create_db
 
 
 def create_retriever():

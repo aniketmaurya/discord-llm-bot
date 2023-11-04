@@ -4,7 +4,7 @@ from langchain.document_loaders import UnstructuredHTMLLoader as HTMLLoader
 from langchain.vectorstores import Chroma
 from tqdm.auto import tqdm
 
-from qna.model import create_embedding
+from discord_llm.model import create_embedding
 
 from .const import MODEL_NAME
 

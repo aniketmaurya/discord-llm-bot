@@ -1,6 +1,6 @@
 from langchain.embeddings import HuggingFaceEmbeddings
 
-from qna.const import MODEL_NAME
+from .const import MODEL_NAME
 
 
 def create_embedding():
