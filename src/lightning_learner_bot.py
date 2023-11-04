@@ -1,4 +1,5 @@
 import os
+from discord import Message
 import asyncio
 from concurrent.futures import ThreadPoolExecutor as Executor
 from loguru import logger
@@ -10,7 +11,6 @@ from qna.retriever import LightningRetriever
 from qna.llms import LlamaCppLLM
 
 load_dotenv()
-
 
 
 TOKEN = os.environ.get("LEARNER_BOT_TOKEN")
@@ -28,12 +28,13 @@ class MyClient(discord.Client):
     async def on_ready(self):
         print(f"Logged on as {self.user}!")
 
-    async def on_message(self, message):
+    async def on_message(self, message: Message):
         if message.author.id == self.user.id:
             return
         print(f"Message from {message.author}: {message.content}")
 
         if message.content.startswith("!help"):
+            await message.channel.typing()
             query = message.content.replace("!help", "")
             result = self.retriever(query=query)
             document = result["document"]
@@ -45,19 +46,26 @@ class MyClient(discord.Client):
                 thought = f"I am still learning and will try my best to answer you on what I know. I am reading **{source}** to formulate an answer for you. Please give me a moment..."
                 await message.reply(thought, mention_author=True)
 
-            if distance > 1.:
+            if distance > 1.1:
                 thought = f"Sorry, I didn't you? Could you please try rephrasing or providing more context so that I can help better?"
                 await message.reply(thought, mention_author=True)
                 return
-            
+
             loop = asyncio.get_running_loop()
-            llm_output = await loop.run_in_executor(self.pool, self.run_in_loop, query, document)
-            output = f"This is what I was able to understand from {source}. I still have a lot to learn so please excuse me if I am wrong...\n\n" + llm_output
+            llm_output = await loop.run_in_executor(
+                self.pool, self.run_in_loop, query, document
+            )
+            output = (
+                f"This is what I was able to understand from {source}. I still have a lot to learn so please excuse me if I am wrong...\n\n"
+                + llm_output
+            )
             try:
                 await message.reply(output, mention_author=True)
             except Exception as e:
                 logger.exception(e)
-                await message.reply("Sorry I faced some issue while getting back to you!")
+                await message.reply(
+                    "Sorry I faced some issue while getting back to you!"
+                )
 
 
 intents = discord.Intents.default()
