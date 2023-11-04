@@ -1,6 +1,6 @@
-# docs-QnA-discord-bot
+# discord-llm-bot
 
-Create Discord bots using LLMs.
+LLM powered Discord Bot.
 
 1. Create a Discord bot and install to your channel [Learn more](https://discordpy.readthedocs.io/en/stable/discord.html)
 1. Initalize embedding model [here](./src/qna/model.py)

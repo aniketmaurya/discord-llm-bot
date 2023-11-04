@@ -19,7 +19,7 @@ TOKEN = os.environ.get("LEARNER_BOT_TOKEN")
 class MyClient(discord.Client):
     retriever = LightningRetriever()
     llm = LlamaCppLLM(lazy=True, n_ctx=1028)
-    pool = Executor(1)
+    pool = Executor(2)
 
     def run_in_loop(self, query, document):
         result = self.llm(query=query, document=document)
