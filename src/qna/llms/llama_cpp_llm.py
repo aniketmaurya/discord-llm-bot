@@ -24,7 +24,7 @@ class LlamaCppLLM:
             self.llm = Llama(model_path=self.model_path, main_gpu=self.main_gpu, n_ctx=self.n_ctx, verbose=False, *self.args, **self.kwargs)
             
         prompt = f"""Answer the given question based on the context. If you don't know the answer then respond with I don't know.
-        Context: {document[:self.n_ctx-50]}
+        {document[:self.n_ctx-50]}
         ----
         Q: {query}
         A:"""
