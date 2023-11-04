@@ -58,7 +58,7 @@ class MyClient(discord.Client):
                 "I still have a lot to learn, so please excuse me if I am wrong...\n\n"
             ) + llm_output
             try:
-                await message.reply(output, mention_author=True)
+                await message.reply(output[:2000], mention_author=True)
             except Exception as e:
                 logger.exception(e)
                 await message.reply(
