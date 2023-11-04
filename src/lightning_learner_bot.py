@@ -44,6 +44,11 @@ class MyClient(discord.Client):
             if distance >= 0.7:
                 thought = f"I am still learning and will try my best to answer you on what I know. I am reading **{source}** to formulate an answer for you. Please give me a moment..."
                 await message.reply(thought, mention_author=True)
+
+            if distance > 1.:
+                thought = f"Sorry, I didn't you? Could you please try rephrasing or providing more context so that I can help better?"
+                await message.reply(thought, mention_author=True)
+                return
             
             loop = asyncio.get_running_loop()
             llm_output = await loop.run_in_executor(self.pool, self.run_in_loop, query, document)
