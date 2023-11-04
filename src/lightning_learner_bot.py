@@ -19,7 +19,7 @@ TOKEN = os.environ.get("LEARNER_BOT_TOKEN")
 class MyClient(discord.Client):
     retriever = LightningRetriever()
     llm = LlamaCppLLM(lazy=True, n_ctx=1028)
-    pool = Executor(2)
+    pool = Executor(1)
 
     def run_in_loop(self, query, document):
         result = self.llm(query=query, document=document)
@@ -50,7 +50,8 @@ class MyClient(discord.Client):
                 self.pool, self.run_in_loop, query, document
             )
             output = (
-                f"This is what I was able to understand from {source}. I still have a lot to learn so please excuse me if I am wrong...\n\n"
+                (f"This is what I was able to understand from {source}. "
+                 "I still have a lot to learn, so please excuse me if I am wrong...\n\n")
                 + llm_output
             )
             try:
