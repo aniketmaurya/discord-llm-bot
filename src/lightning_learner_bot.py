@@ -1,5 +1,5 @@
 import os
-from discord import Message
+from discord import Message, User
 import asyncio
 from concurrent.futures import ThreadPoolExecutor as Executor
 from loguru import logger
@@ -31,22 +31,24 @@ class MyClient(discord.Client):
     async def on_message(self, message: Message):
         if message.author.id == self.user.id:
             return
-        print(f"Message from {message.author}: {message.content}")
 
-        if message.content.startswith("!help"):
+        logger.info(message.content)
+        logger.info(self.user.mention)
+        # message.content.startswith("!help"):
+        if message.content.startswith(self.user.mention):
             await message.channel.typing()
-            query = message.content.replace("!help", "")
+            query = message.content.replace(self.user.mention, "")
             result = self.retriever(query=query)
             document = result["document"]
             distance = result["distance"]
             source = result["source"]
             logger.info(f"query: {query}\ndistance: {distance}")
 
-            if distance >= 0.7:
+            if distance >= 0.7 and distance < 1.1:
                 thought = f"I am still learning and will try my best to answer you on what I know. I am reading **{source}** to formulate an answer for you. Please give me a moment..."
                 await message.reply(thought, mention_author=True)
 
-            if distance > 1.1:
+            elif distance >= 1.1:
                 thought = f"Sorry, I didn't you? Could you please try rephrasing or providing more context so that I can help better?"
                 await message.reply(thought, mention_author=True)
                 return

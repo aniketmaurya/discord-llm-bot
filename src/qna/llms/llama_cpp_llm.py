@@ -47,7 +47,7 @@ class LlamaCppLLM:
                 **self.kwargs,
             )
 
-        prompt = f"""Answer the given question based on the context. If you don't know the answer then respond with I don't know.
+        prompt = f"""Answer the given question based on the context. If you don't know the answer then respond with I couldn't figure that out.
         {document[:self.n_ctx-50]}
         ----
         Q: {query}
