@@ -6,7 +6,7 @@ from llama_cpp import Llama
 
 
 # https://huggingface.co/TheBloke/OpenHermes-2-Mistral-7B-GGUF
-DEFAULT_MODEL = str(Path.home() / "openhermes-2-mistral-7b.Q5_K_M.gguf")
+DEFAULT_MODEL = "openhermes-2-mistral-7b.Q6_K.gguf"
 
 
 class LlamaCppLLM:
@@ -53,8 +53,8 @@ class LlamaCppLLM:
         prompt = f"""Answer the given question based on the given context. If you don't know the answer then respond with "I couldn't figure that out", don't make up answer and avoid wrong answers.
         {document[:self.n_ctx-50]}
         ----
-        Q: {query}
-        A:"""
+        Question: {query}
+        Answer:"""
 
         result = self.llm(prompt=prompt, *args, **kwargs)
         logger.info(result)
