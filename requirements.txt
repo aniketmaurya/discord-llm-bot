@@ -1,3 +1,5 @@
 discord.py
 unstructured
 langchain
+lancedb
+llama-cpp-python

@@ -1,7 +1,6 @@
 from glob import glob
 
 from langchain.document_loaders import UnstructuredHTMLLoader as HTMLLoader
-from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import Chroma
 from tqdm.auto import tqdm
 
