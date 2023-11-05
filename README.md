@@ -29,7 +29,7 @@ To get started with Discord-LLM-Bot, follow these steps:
 
 1. **Run the bot**:
    - Add bot token to environment variable as `LEARNER_BOT_TOKEN`
-   - Run the Python script: `python src/lightning_learner_bot.py`
+   - Run the Python script: `python src/app.py`
 
 1. **Usage**:
    - Once the bot is in your server, you can start asking questions by mentioning the bot (e.g., `@discord-llm-bot How does Lit-GPT work?`).
@@ -40,7 +40,7 @@ To get started with Discord-LLM-Bot, follow these steps:
 Here are some examples of how you can use Discord-LLM-Bot:
 
 - `@discord-llm-bot What is PyTorch Lightning?`
-- `@discord-llm-bot Explain Lit-GPT architecture.`
+- `@discord-llm-bot How do I evaluate Llama 2 using Lit-GPT?`
 - `@discord-llm-bot Show me an example of using PyTorch Lightning for image classification.`
 
 ## Contributing
