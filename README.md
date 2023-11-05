@@ -4,6 +4,9 @@ LLM powered Discord Bot that works seamlessly on CPU. Powered by LanceDB and Lla
 
 This Discord bot is designed to helps answer questions based on a knowledge base (vector db). By default, it contains knowledge of PyTorch Lightning and Lit-GPT.
 
+This is a personal project created for educational purposes. It is not affiliated with or endorsed by the official Lightning AI team.
+
+
 ```mermaid
 graph LR
     A((User Query)) --> B((Convert to Embedding))
@@ -44,10 +47,6 @@ Here are some examples of how you can use Discord-LLM-Bot:
 
 If you want to contribute to this project or have suggestions for new features, feel free to open an issue or create a pull request. All contributions are welcome from the community.
 
-
-## Disclaimer
-
-Discord-LLM-Bot is a personal project created for fun and educational purposes. It is not affiliated with or endorsed by the official Lightning AI team.
 
 ## License
 
