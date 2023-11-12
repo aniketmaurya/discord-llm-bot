@@ -1,0 +1,2517 @@
+# Inference
+
+We demonstrate how to run inference (next token prediction) with the GPT base model in the [`generate.py`](generate.py) script:
+
+```bash
+python generate/base.py --prompt "Hello, my name is" --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+Output:
+
+```text
+Hello, my name is Levi Durrer, I'm an Austrian journalist - Chairman of the Press Blair Party, with 37 years in the Press Blair International, and two years in the Spectre of Austerity for the other. I'm crossing my fingers that you will feel
+```
+
+The script assumes you have downloaded and converted the weights as described [here](download_stablelm.md).
+
+This will run the 3B pre-trained model and require ~7 GB of GPU memory using the `bfloat16` datatype.
+
+## Run interactively
+
+You can also chat with the model interactively:
+
+```bash
+python chat/base.py --checkpoint_dir checkpoints/stabilityai/stablelm-tuned-alpha-3b
+```
+
+This script can work with any checkpoint. For the best chat-like experience, we recommend using it with a checkpoints
+fine-tuned for chatting such as `stabilityai/stablelm-tuned-alpha-3b` or `togethercomputer/RedPajama-INCITE-Chat-3B-v1`.
+
+## Run a large model on one smaller device
+
+Check out our [quantization tutorial](quantize.md).
+
+## Run a large model on multiple smaller devices
+
+You can also use the Fully-Sharded Data Parallel (FSDP) distributed strategy to leverage multiple devices to perform inference. This will allow you to run models that wouldn't fit in a single card by sharding them across several.
+
+For instance, `falcon-40b` would require ~80 GB of GPU memory to run on a single device. We can instead run it on 4 A100 40GB GPUs:
+
+```shell
+python generate/base.py --checkpoint_dir checkpoints/tiiuae/falcon-40b --strategy fsdp --devices 4
+```
+
+Which will take 32 GB of memory, and run at 0.37 tokens/sec.
+
+Or to reduce the memory requirements even further, you can try using CPU offloading. For that, you will need to manually edit the `cpu_offload=False` parameter in the file and set it to `True`.
+
+Now we can run it on just 2 devices.
+
+```shell
+python generate/base.py --checkpoint_dir checkpoints/tiiuae/falcon-40b --strategy fsdp --devices 2
+```
+
+taking 13 GB of memory but running at 0.12 tokens/sec on 2 A100 40GB GPUs.
+Smaller devices like 3090s (24 GB) can also fit it with this technique.
+## Download [Vicuna](https://lmsys.org/blog/2023-03-30-vicuna/) weights
+
+Vicuna is an open-source family of chatbots trained by fine-tuning LLaMA on user-shared conversations collected from [ShareGPT](https://sharegpt.com).
+
+To see all the available checkpoints for Vicuna, run:
+
+```bash
+python scripts/download.py | grep vicuna
+```
+
+which will print
+
+```text
+lmsys/vicuna-7b-v1.3
+lmsys/vicuna-13b-v1.3
+lmsys/vicuna-33b-v1.3
+lmsys/vicuna-7b-v1.5
+lmsys/vicuna-7b-v1.5-16k
+lmsys/vicuna-13b-v1.5
+lmsys/vicuna-13b-v1.5-16k
+```
+
+In order to use a specific Vicuna checkpoint, for instance [vicuna-7b-v1.5](https://huggingface.co/lmsys/vicuna-7b-v1.5), download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id lmsys/vicuna-7b-v1.5
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/lmsys/vicuna-7b-v1.5
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install sentencepiece
+
+python chat/base.py --checkpoint_dir checkpoints/lmsys/vicuna-7b-v1.5
+```
+# NeurIPS 2023 LLM Efficiency Challenge Quickstart Guide
+
+
+
+The [NeurIPS 2023 Efficiency Challenge](https://llm-efficiency-challenge.github.io/) is a competition focused on training **1 LLM for 24 hours on 1 GPU** ‚Äì the team with the best LLM gets to present their results at NeurIPS 2023.
+
+This quick start guide is a short starter guide illustrating the main steps to get started with Lit-GPT, which was selected as the competition's official starter kit.
+
+
+
+&nbsp;
+
+## Competition Facts
+
+
+&nbsp;
+
+**Permitted GPUs:**
+
+- 1x A100 (40 GB RAM);
+- 1x RTX 4090 (24 GB RAM).
+
+&nbsp;
+
+**Permitted models:**
+
+- All transformer-based LLM base models that are not finetuned yet.
+
+The subset of Lit-GPT models supported in this competition is listed in the table below.
+These don't include models that have been finetuned or otherwise aligned, as per the rules of the challenge.
+
+&nbsp;
+
+| Models in Lit-GPT         | Reference                                                    |
+| ------------------------- | ------------------------------------------------------------ |
+| Meta AI Llama 2 Base      | [Touvron et al. 2023](https://arxiv.org/abs/2307.09288)      |
+| TII UAE Falcon Base       | [TII 2023](https://falconllm.tii.ae/)                        |
+| OpenLM Research OpenLLaMA | [Geng & Liu 2023](https://github.com/openlm-research/open_llama) |
+| EleutherAI Pythia         | [Biderman et al. 2023](https://arxiv.org/abs/2304.01373)     |
+| StabilityAI StableLM Base | [Stability AI 2023](https://github.com/Stability-AI/StableLM) |
+
+&nbsp;
+
+**Permitted datasets**
+
+Any open-source dataset is allowed. Originally, [per competition rules](https://llm-efficiency-challenge.github.io/challenge), datasets that utilize "generated content" from other LLMs were not permitted. However, the rules were recently softened to also allow LLM-generated datasets if those datasets are made available and if it is not against the usage restrictions and guidelines of the LLM. If you plan to use a specific dataset that is not explicitely listed on the [challenge website](https://llm-efficiency-challenge.github.io/challenge) or want to use LLM-generated data, it is recommended to reach out to the organizers and confirm that this is in line with the competition rules.
+
+Examples of permitted datasets are the following:
+
+- [Databricks-Dolly-15](https://huggingface.co/datasets/databricks/databricks-dolly-15k)
+- [OpenAssistant Conversations Dataset (oasst1)](https://huggingface.co/datasets/OpenAssistant/oasst1)
+- [The Flan Collection](https://github.com/google-research/FLAN/tree/main/flan/v2)
+
+You are allowed to create your own datasets if they are made
+publicly accessible under an open-source license, and they are not generated from other LLMs (even open-source ones).
+
+Helpful competition rules relevant to the dataset choice:
+
+- The maximum prompt/completion length the models are expected to handle is 2048 tokens.
+- The evaluation will be on English texts only.
+
+&nbsp;
+
+**Submission deadline**
+
+- October 25, 2023 ([Please check](https://llm-efficiency-challenge.github.io/dates) official website in case of updates.)
+
+&nbsp;
+
+## Lit-GPT Setup
+
+Use the following steps to set up the Lit-GPT repository on your machine.
+
+```shell
+git clone https://github.com/Lightning-AI/lit-gpt
+cd lit-gpt
+pip install -r requirements.txt tokenizers sentencepiece huggingface_hub
+```
+
+&nbsp;
+
+## Downloading Model Checkpoints
+
+This section explains how to download the StableLM 3B Base model, one of the smallest models supported in Lit-GPT (an even smaller, supported model is Pythia, which starts at 70M parameters). The downloaded and converted checkpoints will occupy approximately 28 Gb of disk space.
+
+```bash
+python scripts/download.py \
+  --repo_id stabilityai/stablelm-base-alpha-3b
+
+python scripts/convert_hf_checkpoint.py \
+  --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+While StableLM 3B Base is useful as a first starter model to set things up, you may want to use the more capable Falcon 7B or Llama 2 7B/13B models later. See the [`download_*`](https://github.com/Lightning-AI/lit-gpt/tree/main/tutorials) tutorials in Lit-GPT to download other model checkpoints.
+
+After downloading and converting the model checkpoint, you can test the model via the following command:
+
+```bash
+python generate/base.py \
+  --prompt "LLM efficiency competitions are fun, because" \
+  --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+&nbsp;
+
+## Downloading and Preparing Datasets
+
+The following command will download and preprocess the Dolly15k dataset for the StableLM 3B Base model:
+
+```bash
+python scripts/prepare_dolly.py \
+  --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b \
+  --destination_path data/dolly-stablelm3b
+```
+
+> [!NOTE]
+> The preprocessed dataset is specific to the StableLM 3B model. If you use a different model like Falcon or Llama 2 later, you'll need to process the dataset with that model checkpoint directory. This is because each model uses a different tokenizer.
+
+&nbsp;
+
+## Finetuning
+
+[Low-rank Adaptation (LoRA)](https://lightning.ai/pages/community/tutorial/lora-llm/) is a good choice for a first finetuning run. The Dolly dataset has ~15k samples, and the finetuning might take half an hour.
+
+To accelerate this for testing purposes, edit the [./finetune/lora.py](https://github.com/Lightning-AI/lit-gpt/blob/main/finetune/lora.py) script and change `max_iters = 50000` to `max_iters = 500` at the top of the file.
+
+> [!NOTE]
+> The Dolly dataset has a relatively long context length, which could result in out-of-memory issues. The maximum context length that is used for the evaluation, [according to the official competition rules](https://llm-efficiency-challenge.github.io/question), is 2,048 tokens. Hence, it's highly recommended to prepare the dataset with a fixed max length, for example, `python scripts/prepare_dolly.py --max_seq_length 2048`.
+
+The following command finetunes the model:
+
+```bash
+CUDA_VISIBLE_DEVICES=2 python finetune/lora.py \
+  --data_dir data/dolly-stablelm3b \
+  --checkpoint_dir "checkpoints/stabilityai/stablelm-base-alpha-3b" \
+  --out_dir "out/stablelm3b/dolly/lora/experiment1" \
+  --precision "bf16-true"
+```
+
+With 500 iterations, this takes approximately 1-2 min on an A100 and uses 26.30 GB GPU memory.
+
+If you are using an RTX 4090, change `micro_batch_size=4` to `micro_batch_size=1` so that the model will only use 12.01 GB of memory.
+
+(More finetuning settings are explained [here](https://lightning.ai/pages/community/tutorial/neurips2023-llm-efficiency-guide/#toc10).)
+
+&nbsp;
+
+## Local Evaluation
+
+The official Lit-GPT competition will use a small subset of HELM tasks for model evaluation, which includes BigBench (general), MMLU (knowledge), TruthfulQA (knowledge and harm in a multiple choice format), CNN/DailyMail (news summarization), GSM8K (math), and BBQ (bias).
+
+HELM is currently also being integrated into Lit-GPT to evaluate LLMs before submission.
+
+However, a tool with a more convenient interface is Eleuther AI's [Evaluation Harness](https://github.com/EleutherAI/lm-evaluation-harness), which contains some tasks, for example, BigBench, TruthfulQA, and GSM8k, that overlap with HELM. We can set up the Evaluation Harness as follows:
+
+```bash
+pip install git+https://github.com/EleutherAI/lm-evaluation-harness.git@master
+```
+
+And then we can use it via the following command:
+
+```bash
+python eval/lm_eval_harness.py \
+  --checkpoint_dir "checkpoints/stabilityai/stablelm-base-alpha-3b" \
+  --precision "bf16-true" \
+  --eval_tasks "[truthfulqa_mc,gsm8k]" \
+  --batch_size 4 \
+  --save_filepath "results-stablelm-3b.json"
+```
+
+(You can find a full task list in the task table [here](https://github.com/EleutherAI/lm-evaluation-harness/blob/master/docs/task_table.md).)
+
+To evaluate a LoRA-finetuned model, you need to first merge the LoRA weights with the base model to create a new checkpoint file:
+
+
+```bash
+python scripts/merge_lora.py \
+  --checkpoint_dir "checkpoints/stabilityai/stablelm-base-alpha-3b/" \
+  --lora_path "out/stablelm3b/dolly/lora/experiment1/lit_model_lora_finetuned.pth" \
+  --out_dir "out/lora_merged/stablelm-base-alpha-3b/"
+```
+
+```bash
+cp checkpoints/stabilityai/stablelm-base-alpha-3b/*.json \
+out/lora_merged/stablelm-base-alpha-3b/
+```
+
+For more information on LoRA weight merging, please see the
+[Merging LoRA Weights](https://github.com/Lightning-AI/lit-gpt/blob/main/tutorials/finetune_lora.md#merging-lora-weights)
+section of the LoRA finetuning documentation.
+
+After merging the weights, we can use the `lm_eval_harness.py` similar to before with the only difference that we now use the new
+checkpoint folder containing the merged LoRA model:
+
+```bash
+python eval/lm_eval_harness.py \
+  --checkpoint_dir "out/lora_merged/stablelm-base-alpha-3b" \
+  --precision "bf16-true" \
+  --eval_tasks "[truthfulqa_mc,gsm8k]" \
+  --batch_size 4 \
+  --save_filepath "results-stablelm-3b.json"
+```
+
+&nbsp;
+
+## Submission
+
+You will be required to submit a Docker image for the submission itself. Fortunately, the organizers have a GitHub repository with the exact steps [here](https://github.com/llm-efficiency-challenge/neurips_llm_efficiency_challenge) and a toy-submission setup guide to test your model locally before submission.
+
+
+&nbsp;
+
+## Additional Information & Resources
+
+- [The official NeurIPS 2023 LLM Efficiency Challenge competition website](https://llm-efficiency-challenge.github.io/)
+- A more extensive guide, including environment setup tips: [The NeurIPS 2023 LLM Efficiency Challenge Starter Guide](https://lightning.ai/pages/community/tutorial/neurips2023-llm-efficiency-guide)
+- [Official competition Discord](https://discord.com/login?redirect_to=%2Fchannels%2F1077906959069626439%2F1134560480795570186) and [Lightning AI + Lit-GPT Discord](https://discord.com/invite/MWAEvnC5fU)
+- LoRA vs Adapter vs Adapter v2 comparison in Lit-GPT using Falcon 7B: [Finetuning Falcon LLMs More Efficiently With LoRA and Adapters](https://lightning.ai/pages/community/finetuning-falcon-efficiently/)
+- [Dealing with out-of-memory (OOM) errors in Lit-GPT](https://github.com/Lightning-AI/lit-gpt/blob/main/tutorials/oom.md)
+- Introduction to Fabric (an API to access more advanced PyTorch features used in Lit-GPT) and memory saving tips: [Optimizing Memory Usage for Training LLMs and Vision Transformers in PyTorch](https://lightning.ai/pages/community/tutorial/pytorch-memory-vit-llm/)
+## Dealing with out-of-memory (OOM) errors
+
+If you got this error while running a script
+
+```bash
+OutOfMemoryError: CUDA out of memory. Tried to allocate 2.22 GiB. GPU 0 has a total capacity of 79.15 GiB of which 228.38 MiB is free. Including non-PyTorch memory, this process
+has 78.93 GiB memory in use. Of the allocated memory 76.28 GiB is allocated by PyTorch, and 2.14 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory
+is large try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+```
+
+it means that your GPU memory size wasn't big enough for the model and script configuration.
+
+Here's a few things you can try:
+
+### Reduce the micro batch size
+
+Adjust the `micro_batch_size = ...` variable in the fine-tuning and pretraining scripts. This variable determines the number of samples loaded per iteration.
+
+A smaller value will simply load fewer samples simultaneously. The minimum value is 1.
+
+Experiment with different micro batch sizes to find a balance between memory consumption and computational efficiency. Smaller micro batch sizes consume less memory but may result in slower training convergence. Conversely, larger micro batch sizes require more memory but can accelerate training speed.
+
+### Reduce the model's context length
+
+The context length (`block_size` in the code) plays a significant role in running models with attention.
+* The pretraining scripts are configured to use the full context length of the model to train. 
+* The finetuning scripts are configured to use the longest sample length of the training data to avoid allocating unnecessary memory (`max_seq_length` in the code).
+  If that's longer than the model's context length, an error is raised. If you try to run a batch that is longer than this, an error is raised. 
+
+However, your hardware may not support such large context lengths. Here's what you can do:
+* For the pretraining scripts, you can simply reduce the `Config(block_size=...)` value.
+* For the finetuning scripts, you can trim the length of the samples in your dataset. 
+  Most of the `scripts/prepare_*.py` scripts expose a `--max_seq_length=...` argument. This might also be useful in cases where
+  sample lengths are highly unbalanced, as the presence of a single very long sample would incur a larger memory usage for all other
+  shorter samples. For example, the median length of the samples in Alpaca is 110 tokens. Truncating the Alpaca dataset to 256 max tokens reduces the memory requirements of a Falcon 7B model from 23.52 GB to 15.73 GB. For more information about the dataset truncation, please see the *Truncating datasets* section in the the [prepare_datasets.md](prepare_datasets.md) tutorial.
+
+Keep in mind that reducing the context length will affect the modelling performance on text sequences longer than the limit.
+
+### Use lower precision
+
+Our scripts expose the `--precision` argument, this directly impacts the memory usage.
+
+Using true lower precision (`16-true`, `bf16-true`) reduces the memory usage by half compared to `32-true`, however,
+the model might start producing NaNs due to the limited range of representable values.
+
+Mixed precision training (`16-mixed`, `bf16-mixed`) provides better stability but offers limited memory reduction.
+
+### Do sharding across multiple GPUs
+
+For exceptionally large models, the aforementioned techniques might still not suffice. If you have multiple GPUs available,
+you can trade off memory for speed by changing the `devices = 1` argument in the scripts. Enabling this option enables a parallelism technique (FSDP), sharding the memory across different GPUs.
+
+The default configuration already uses activation checkpointing, but you can enable CPU offloading by changing the `cpu_offload=False` argument in the scripts.
+
+### Try a different optimizer
+
+Our scripts use the [`AdamW` optimizer](https://pytorch.org/docs/main/generated/torch.optim.AdamW.html).
+It maintains 2 states for each trainable parameter of the model, meaning that the optimizer memory is double compared to
+an optimizer like [`SGD`](https://pytorch.org/docs/main/generated/torch.optim.SGD.html).
+
+You can try replacing it with your optimizer of choice that is lighter in memory requirements. Keep in mind that different optimizers have distinct optimization behaviors, so it's essential to assess their impact on the training process and model performance.
+An example would be the recently published [Sophia](https://arxiv.org/abs/2305.14342) or [Lion](https://arxiv.org/abs/2302.06675) optimizers.
+
+This suggestion is particularly relevant for pretraining, as the trainable parameters in the model represent a small
+subset of the total in the fine-tuning scripts.
+# Pretrain Llama 2 on OpenWebText
+
+This tutorial will walk you through setting up the OpenWebText dataset and launching the pretraining script.
+
+## What's OpenWebText
+
+[OpenWebText](https://github.com/jcpeterson/openwebtext) is an open-source reproduction of OpenAI's unreleased WebText training dataset, which was originally used to train GPT-2. The version that is used here consists of 8M documents and is loaded via the `load_dataset("openwebtext", ...)` function from the [datasets](https://github.com/huggingface/datasets) Python package. [Please refer to the website hosting the dataset](https://huggingface.co/datasets/Skylion007/openwebtext) for the licensing information.
+
+
+## Prepare OpenWebText for training
+
+
+In order to start pretraining lit-gpt on it, you need to read, tokenize, and write the data in binary format.
+
+To prepare the dataset with the Llama 2 tokenizer, run
+
+```bash
+pip install datasets
+
+python scripts/prepare_openwebtext.py \
+  --checkpoint_dir checkpoints/meta-llama/Llama-2-7b-hf/ \
+  --destination_path data/openwebtext
+```
+
+The script will take about 15 min to run.
+
+
+## Pretraining
+
+Running the pretraining script with its default settings requires at least 4 GPUs with 40GB+ each. (However, alternatively, you can train a smaller Pythia-70m on 1 GPU, more information about that further below).
+
+```bash
+python pretrain/openwebtext.py \
+  --devices 4
+```
+
+The script will save checkpoints periodically to the folder `out/`.
+
+By default, the `pretrain/openwebtext.py` script will pretrain the Llama 2 7B model with FSDP in
+`bfloat16` precision and gradient accumulation.
+
+You can easily change the size of the model by passing a different string to the model name variable
+
+```python
+model_name = "Llama-2-7b-hf"
+```
+
+at the top of this script.
+
+The currently supported model names are contained in the [config.py](https://github.com/Lightning-AI/lit-gpt/lit_gpt/config.py) file. 
+You can 
+
+1) either search this file for lines containing "name =",
+2) or run `python scripts/download.py` without additional command line arguments,
+
+Keep in mind that the original LLaMA training for the 7B model required 83k A100 80GB
+hours (on a bigger dataset). However, for full pretraining on OpenWebText, you'll likely still need access to a cluster.
+
+Once you're in a cluster, you can follow [these instructions](https://lightning.ai/docs/fabric/stable/fundamentals/launch.html#launch-on-a-cluster)
+to launch the script across machines:
+
+- [SLURM cluster](https://lightning.ai/docs/fabric/stable/guide/multi_node/slurm.html)
+- [Barebones cluster](https://lightning.ai/docs/fabric/stable/guide/multi_node/barebones.html)
+- [MPI](https://lightning.ai/docs/fabric/stable/guide/multi_node/other.html)
+
+The [script contains several configurations and hyperparameters](https://github.com/Lightning-AI/lit-gpt/blob/main/pretrain/redpajama.py#L23-L45) you can tweak.
+
+For instance, `micro_batch_size` should be adjusted so the process will use the available
+GPU memory. For more tips to avoid out-of-memory issues, please also see the more detailed
+[Dealing with out-of-memory (OOM) errors](oom.md) guide.
+
+Last, logging is kept minimal in the script. In order to use a particular logger
+please refer to <https://lightning.ai/docs/fabric/stable/api/loggers.html> or
+call a logging client library like `wandb` directly.
+
+## Training a smaller model on a single GPU
+
+To train a smaller Pythia 70M model on a single GPU, you can modify the `pretrain/openwebtext.py` file to use the following settings:
+
+
+```python
+model_name = "pythia-70m"
+```
+
+(Please see the the `download_*` scripts in the [../tutorials](../tutorials) for more information on downloading model checkpoints for different models.)
+
+Also, before you start training, note that you will need to prepare the dataset specifically for this model since it may use a different tokenizer:
+
+```bash
+python scripts/prepare_openwebtext.py \
+  --checkpoint_dir checkpoints/EleutherAI/pythia-70m/ \
+  --destination_path data/lit-openwebtext
+
+python pretrain/openwebtext.py \
+  --devices 4
+```
+
+## Using the PyTorch Lightning `Trainer`
+
+The `pretrain/openwebtext.py` used and discussed above uses Lightning Fabric, which is an open-source library for accessing more advanced PyTorch features conveniently (for example, mixed-precision training, multi-GPU training like FSDP, and more).
+
+The PyTorch Lightning Trainer, which shares the same accelerator code with Fabric, offers additional features, such as more advanced checkpointing and logging. If you prefer using the PyTorch Lightning Trainer, you can use the alternative `pretrain/openwebtext_trainer.py` script:
+
+```bash
+python pretrain/openwebtext_trainer.py \
+  --devices 4
+```
+## Download [Falcon](https://falconllm.tii.ae) weights
+
+UAE's Technology Innovation Institute has open-sourced Falcon LLM.
+It is trained on [RefinedWeb](https://huggingface.co/datasets/tiiuae/falcon-refinedweb) enhanced with curated corpora
+ Weights are released under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0).
+
+The first Falcon release includes a base model and an instruction tuned model of sizes 7B and 40B called `falcon-7b-instruct` and `falcon-40b-instruct`. Recently, checkpoints for 180B parameter models were added as well; the 180B instruction tuned model is called `falcon-180B-chat` and similar to the `falcon-40b-instruct` architecture except for its larger size.
+
+To see all the available checkpoints for Falcon, run:
+
+```bash
+python scripts/download.py | grep falcon
+```
+
+which will print
+
+```text
+tiiuae/falcon-7b
+tiiuae/falcon-7b-instruct
+tiiuae/falcon-40b
+tiiuae/falcon-40b-instruct
+tiiuae/falcon-180B
+tiiuae/falcon-180B-chat
+```
+
+In order to use a specific Falcon checkpoint, for instance [falcon-7b](https://huggingface.co/tiiuae/falcon-7b), download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id tiiuae/falcon-7b
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/tiiuae/falcon-7b
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install tokenizers
+
+python generate/base.py --prompt "Hello, my name is" --checkpoint_dir checkpoints/tiiuae/falcon-7b
+```
+
+or [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Lightning-AI/lit-gpt/blob/main/notebooks/falcon-inference.ipynb)
+# Preparing Datasets
+
+Below is a table of all datasets that are currently supported in Lit-GPT:
+
+
+| Name         | Task        | Size                | Reference Repo                                                  | Paper / Blog                                                                                                              | Data License                                                                                                                                                                                                     |
+|--------------|-------------|---------------------|-----------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Alpaca       | Finetuning  | 51,759 samples      | [URL](https://github.com/tatsu-lab/stanford_alpaca)             | [URL](https://crfm.stanford.edu/2023/03/13/alpaca.html)                                                                   | Attribution-NonCommercial 4.0 International, [ URL](https://crfm.stanford.edu/2023/03/13/alpaca.html)                                                                                                            |
+| Alpaca Libre | Finetuning  | 55,370 samples      | [URL](https://github.com/mobarski/alpaca-libre)                 | -                                                                                                                         | CC0/MIT,  [URL](https://github.com/mobarski/alpaca-libre)                                                                                                                                                        |
+| Dolly        | Finetuning  | 15,011 samples      | [URL](https://github.com/databrickslabs/dolly/tree/master/data) | [URL](https://www.databricks.com/blog/2023/04/12/dolly-first-open-commercially-viable-instruction-tuned-llm)              | CC-BY-SA, [URL](https://github.com/databrickslabs/dolly#model-overview)                                                                                                                                          |
+| LongForm     | Finetuning  | 23,652 samples      | [URL](https://github.com/akoksal/LongForm)                      | [URL](https://arxiv.org/abs/2304.08460)                                                                                   | No information provided and subset-dependent, [URL](https://github.com/akoksal/LongForm) |
+| LIMA         | Finetuning  | 1,084 samples       | [URL](https://huggingface.co/datasets/GAIR/lima)                | [URL](https://arxiv.org/abs/2305.11206)                                                                                   | "If the source data of LIMA has a stricter license than CC BY-NC-SA, the LIMA dataset follows the same. Otherwise, it follows the CC BY-NC-SA license", [URL](https://huggingface.co/datasets/GAIR/lima#license) |
+| OpenWeb Text | Pretraining | 8,013,769 documents | [URL](https://github.com/jcpeterson/openwebtext)                | [URL](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) | Unspecified                                                                                                                                                                                                      |
+| RedPajama    | Pretraining | 1.2 T tokens        | [URL](https://github.com/togethercomputer/RedPajama-Data)       | [URL](https://together.ai/blog/redpajama-models-v1)                                                                       | Subset-dependent, [URL](https://github.com/togethercomputer/RedPajama-Data#license)                                                                                                                              |                                                                     |   |
+
+&nbsp;
+
+## Preparing Finetuning Datasets
+
+Note that the dataset needs to be prepared separately for each type of model since the tokenizers used by the models may differ, resulting in slightly different preprocessed datasets.
+
+For the following examples, we will use a Falcon 7B model. However, the same methods are compatible with all other models as well.
+
+The steps here only need to be done once before preparing the finetuning datasets in the following subsections:
+
+1. Follow the instructions in the [README](../README.md) to install the dependencies.
+2. Download and convert the weights following our [guide](download_falcon.md).
+
+&nbsp;
+
+### Alpaca
+
+&nbsp;
+
+
+The Alpaca dataset consists of 52,000 instructions and demonstrations produced by OpenAI's text-davinci-003 engine. This data is used in instruction-tuning, helping improve the performance of language models to follow instructions.
+
+In its development, the creators leveraged the data generation methodology from the [Self-Instruct framework](https://github.com/yizhongw/self-instruct).
+
+The original [Alpaca](https://crfm.stanford.edu/2023/03/13/alpaca.html) dataset can be prepared as follows:
+
+```bash
+python scripts/prepare_alpaca.py \
+ --checkpoint_dir checkpoints/tiiuae/falcon-7b
+```
+
+#### Truncating datasets
+
+By default, the finetuning script (for example [`finetuning/lora.py`](../finetuning/lora.py)) will determine the size of the longest tokenized sample in the dataset to determine the block size. However, if you are willing to truncate a few examples in the training set, you can reduce the computational resource requirements significantly. For instance you can set a sequence length threshold via `--max_seq_length`. We can determine an appropriate maximum sequence length by considering the distribution of the data sample lengths shown in the histogram below.
+
+<img src="images/prepare_dataset/alpaca.jpg" width=400px>
+
+In this case, a cut-off of 256 may be a reasonable choice:
+
+```bash
+python scripts/prepare_alpaca.py \
+ --checkpoint_dir checkpoints/tiiuae/falcon-7b \
+ --max_seq_length 256
+```
+
+For comparison, the Falcon 7B model requires 23.52 GB of memory for the original Alpaca dataset and 15.73 GB of memory for the truncated Alpaca dataset when finetuning with LoRA using a micro batchsize of 1 and bfloat-16 precision.
+
+&nbsp;
+
+### Alpaca Libre
+
+[Alpaca Libre](https://github.com/mobarski/alpaca-libre) is a reimplementation or alternative to Alpaca using the same formatting.
+
+To use Alpaca Libre instead of the original Alpaca dataset, use the following command:
+
+```bash
+python scripts/prepare_alpaca.py \
+ --checkpoint_dir "checkpoints/tiiuae/falcon-7b" \
+ --data_file_url "https://raw.githubusercontent.com/mobarski/alpaca-libre/main/data/output/alpaca_libre_ok_tasks_v4.json" \
+ --data_file_name "alpaca_libre_data_cleaned_archive.json" \
+ --destination_path "data/alpaca_libre"
+```
+
+The Alpaca Libre dataset distribution is shown below.
+
+<img src="images/prepare_dataset/alpaca_libre.jpg" width=400px>
+
+You may want to consider truncating the dataset (see the *Truncating datasets* discussion in the Alpaca section for more information.) For this dataset, a cut-off of 256 may be a good choice:
+
+```bash
+python scripts/prepare_alpaca.py \
+ --checkpoint_dir "checkpoints/tiiuae/falcon-7b" \
+ --data_file_url "https://raw.githubusercontent.com/mobarski/alpaca-libre/main/data/output/alpaca_libre_ok_tasks_v4.json" \
+ --data_file_name "alpaca_libre_data_cleaned_archive.json" \
+ --destination_path "data/alpaca_libre" \
+ --max_seq_length 256
+```
+
+
+
+&nbsp;
+
+### Dolly
+
+The Dolly dataset is a publicly available collection of 15k instruction-following entries created by Databricks. It spans multiple behavioral domains, as described in the [InstructGPT paper](https://arxiv.org/abs/2203.02155) paper. These include areas like brainstorming, classification, closed QA, content creation, information retrieval, open QA, and summary generation.
+
+The usage is similar to the Alpaca dataset described above. Using Falcon 7b as an example, we can prepare the dataset as follows:
+
+```bash
+python scripts/prepare_dolly.py \
+ --checkpoint_dir "checkpoints/tiiuae/falcon-7b"
+```
+
+The Dolly dataset distribution is shown below.
+
+<img src="images/prepare_dataset/dolly.jpg" width=400px>
+
+You may want to consider truncating the dataset (see the *Truncating datasets* discussion in the Alpaca section for more information.) For this dataset, a cut-off of 512 may be a good choice:
+
+```bash
+python scripts/prepare_dolly.py \
+ --checkpoint_dir "checkpoints/tiiuae/falcon-7b" \
+ --max_seq_length 512
+```
+
+&nbsp;
+
+### LongForm
+
+LongForm is a semi-synthetic dataset based on raw text corpora for which the instructions were generated via an LLM. For more details about the instruction-generation process, please refer to the [LongForm research paper](https://arxiv.org/abs/2304.08460) by K√∂ksal et al. According to the research paper, a Llama 7B model trained on LongForm achieves substantially better performance than the same Llama model trained on the 2x larger Alpaca dataset.
+
+LongForm consists of 23,652 training samples, 2,042 validation samples, and 2,045 test samples. (In Lit-GPT, the validation samples are currently not used.)
+
+The more detailed dataset composition is as follows based on a table taken from the [dataset repository](https://github.com/akoksal/LongForm):
+
+| **Type**               | **Source**     | **Number of Examples** |
+|------------------------|----------------|------------------------|
+| **Corpora**            | C4             | 10,000                 |
+|                        | Wikipedia      | 5,000                  |
+| **Structured Corpora** | Stack Exchange | 4,380                  |
+|                        | WikiHow        | 2,500                  |
+| **Tasks**              | NIv2           | 3,684                  |
+|                        | Big Bench      | 600                    |
+|                        | BEA-GEC        | 1,203                  |
+|                        | Enron          | 372                    |
+| **Total**              |                | 27,739                 |
+|  |   |  |
+| **Train**              |                | 23,652                 |
+| **Validation**         |                | 2,042                  |
+| **Test**               |                | 2,045                  |
+
+License information is not provided but would depend on the individual subsets listed above.
+
+The LongForm dataset distribution is shown below.
+
+<img src="images/prepare_dataset/longform.jpg" width=400px>
+
+You may want to consider truncating the dataset (see the *Truncating datasets* discussion in the Alpaca section for more information.) For this dataset, a cut-off of 1500 may be a good choice:
+
+```bash
+python scripts/prepare_dolly.py \
+ --checkpoint_dir "checkpoints/tiiuae/falcon-7b" \
+ --max_seq_length 1500
+```
+
+&nbsp;
+
+### LIMA
+
+The LIMA dataset is a collection of 1,000 carefully curated prompts and responses, as described in the [LIMA: Less Is More for Alignment](https://arxiv.org/abs/2305.11206) paper. The dataset is sourced from three community Q&A websites: Stack Exchange, wikiHow, and the Pushshift Reddit Dataset. In addition, it also contains prompts and answers written and collected by the authors of the LIMA paper.
+
+The usage is similar to the Dolly dataset described above except that it requires an Hugging Face access token that you need to copy & paste from your Hugging Face account. Using Falcon 7b as an example, we can prepare the dataset as follows:
+
+```bash
+python scripts/prepare_lima.py \
+ --checkpoint_dir "checkpoints/tiiuae/falcon-7b" \
+ --access_token "insert_your_token_here"
+```
+
+LIMA contains a handful of multiturn conversations. By default, only the first instruction-response pairs from
+each of these multiturn conversations are included. If you want to override this behavior and include the follow up instructions
+and responses, set `--include_multiturn_conversations True`.
+
+The Lima dataset distribution is shown below.
+
+<img src="images/prepare_dataset/lima.jpg" width=400px>
+
+You may want to consider truncating the dataset (see the *Truncating datasets* discussion in the Alpaca section for more information.) For this dataset, a cut-off of 512 may be a good choice:
+
+```bash
+python scripts/prepare_dolly.py \
+ --checkpoint_dir "checkpoints/tiiuae/falcon-7b" \
+ --max_seq_length 512
+```
+
+
+&nbsp;
+
+### Finetuning After Data Preparation
+
+After preparing the dataset, you can finetune the model using the [`finetune/*.py`](../finetune/) scripts, for example,
+
+```bash
+python finetune/lora.py
+ --checkpoint_dir "checkpoints/tiiuae/falcon-7b" \
+ --data_dir "data/alpaca_libre" \
+ --out_dir "out/lora/alpaca"
+```
+
+Please read the [tutorials/finetune_*.md](../tutorials) documents for more information about finetuning models.
+
+> [!IMPORTANT]
+> Make sure that the `prepare_*.py` and `finetune/*.py` scripts use the same model checkpoint specified via `--checkpoint_dir`.
+
+> [!IMPORTANT]
+> By default, the maximum sequence length is obtained from the model configuration file. In case you run into out-of-memory errors, especially in the cases of LIMA and Dolly,
+> you can try to lower the context length by preparing the dataset with a fixed max length, for example, `python scripts/prepare_lima.py --max_seq_length 2048`. For more information on truncating datasets, see the *Truncating datasets* section in the Alpaca section near the top of this article.
+
+&nbsp;
+
+## Preparing Custom Datasets for Instruction Finetuning
+
+The models in Lit-GPT expect datasets for instruction finetuning in the following format:
+
+```
+[
+    {
+        "instruction": "Write a limerick about a
+                        pelican.‚Äù,
+        "input": "",
+        "output": "There once was a pelican so fine,
+                   \nHis beak was as colorful as
+                   sunshine,\nHe would fish all day,\nIn
+                   a very unique way,\nThis pelican was
+                   truly divine!\n\n\n"
+    },
+    {
+        "instruction": "Identify the odd one out from
+                        the group.",
+        "input": "Carrot, Apple, Banana, Grape",
+        "output": "Carrot\n\n"
+    },
+]
+```
+(Note that depending on the task, the `"input"` text can be an empty string, as shown above.)
+
+Custom datasets can be prepared by either creating a new `scripts/prepare_dataset.py` script or reading the dataset
+from a CSV file.
+
+&nbsp;
+
+### Preparing Custom Datasets From a CSV File
+
+You can prepare custom dataset using a CSV file with the following columns:
+
+- `instruction`: Column which will describe the task.
+- `input`: A string holding a special input value for the instruction. This applies to some samples, and in others, this is empty (empty string).
+- `output`: The expected response
+
+> If any of the columns is missing, then the script will fail to create the dataset.
+
+Before you finetune, prepare the dataset using the `prepare_csv.py` script:
+
+```bash
+python scripts/prepare_csv.py --csv_path path/to/the/file.csv
+```
+You can also customize the dataset generation by using these additional parameters
+
+- `destination_path`: The folder where the binary data will be saved. By default, it is saved inside `data/csv`
+
+- `checkpoint_dir`: The model checkpoint dir. It will use the model's tokenizer to load and convert the string to input ids. Defaults to `"checkpoints/stabilityai/stablelm-base-alpha-3b"`
+
+- `test_split_fraction`: The fraction of the data to split. Defaults to `0.1`
+
+- `seed`: The seed value to reproduce the same random splits for train and test data.
+
+- `mask_inputs`: Whether we require any masking or not.
+
+- `ignore_index`: Mask out all the tokens after this index when preparing the dataset.
+
+To use the the settings described above, you can add the respective command line arguments when calling `prepare_csv.py` as shown in the example below:
+
+```bash
+python scripts/prepare_csv.py --csv_path test_data.csv \
+--destination_path data/csv \
+--checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b \
+--test_split_fraction 0.1 \
+--seed 42 \
+--mask_inputs false \
+--ignore_index -1
+```
+Replace `test_data.csv` with your CSV path and the other additional parameters accordingly. Executing the command above will save `train.pt` and `test.pt` on your disk at the `destination_path`. Now you can use the prepared data to [finetune your model](https://github.com/Lightning-AI/lit-gpt/blob/main/tutorials/finetune_lora.md#running-the-finetuning).
+
+&nbsp;
+
+### Preparing Custom Datasets Using a Dataset Prepration Script
+
+If you don't have a CSV file following the format described in the previous section, the easiest way to prepare a new dataset is to copy and modify one of the existing dataset preparation scripts:
+
+- [`scripts/prepare_alpaca.py`](https://github.com/Lightning-AI/lit-gpt/blob/main/scripts/prepare_alpaca.py) (if you plan to load a dataset from a JSON file);
+- [`scripts/prepare_lima.py`](https://github.com/Lightning-AI/lit-gpt/blob/main/scripts/prepare_lima.py) (if you plan to load a dataset using the `datasets` Python library).
+
+These scripts may look intimidating at first glance since they include code for tokenizing the dataset for a specific LLM that is provided via a checkpoint directory. However, note that you only need to modify a small fraction of the code file, namely the portion that downloads and formats the training data.
+
+In [`scripts/prepare_lima.py`](https://github.com/Lightning-AI/lit-gpt/blob/main/scripts/prepare_lima.py), the [line 26](https://github.com/Lightning-AI/lit-gpt/blob/98fad263a62e5e57821de817bdd5e316abfb34d4/scripts/prepare_lima.py#L26) references the HF repo ID, and the lines [50-53](https://github.com/Lightning-AI/lit-gpt/blob/98fad263a62e5e57821de817bdd5e316abfb34d4/scripts/prepare_lima.py#L50-L53) save the dataset as `train_data`. Here, `train_data` is a list that contains the instruction examples in the format mentioned above.
+
+
+In [`scripts/prepare_alpaca.py`](https://github.com/Lightning-AI/lit-gpt/blob/main/scripts/prepare_alpaca.py), you only need to modify [lines 24-25](https://github.com/Lightning-AI/lit-gpt/blob/98fad263a62e5e57821de817bdd5e316abfb34d4/scripts/prepare_alpaca.py#L24-L25) for the file name and URL, assuming the JSON file you are working with has the same format as the [Alpaca JSON file](https://raw.githubusercontent.com/tloen/alpaca-lora/main/alpaca_data_cleaned_archive.json).
+
+
+
+&nbsp;
+
+## Preparing Pretraining Datasets
+
+In addition to the finetuning dataset described above, Lit-GPT also supports several datasets for pretraining. The pretraining datasets are described in more detail in the following separate tutorial documents:
+
+- [Pretrain Llama 2 on OpenWebText](./pretrain_openwebtext.md)
+- [Pretrain Llama 2 on RedPajama](./pretrain_redpajama.md)## Download TinyLlama weights
+
+[TinyLlama 1.1B](https://github.com/jzhang38/TinyLlama/) is Apache 2.0 licensed and can be used without restrictions.
+It is still in development and at the time of writing this, checkpoints for the model trained up to 1T tokens are available.
+The target is to train it for ~3 epochs on 3T tokens total. For more details on the schedule and progress of the pretraining, see the official [README](https://github.com/jzhang38/TinyLlama/tree/main).
+
+
+In order to use the TinyLLama 1.1B model checkpoint, which requires about 5 GB of disk space, download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id PY007/TinyLlama-1.1B-intermediate-step-480k-1T
+
+python scripts/convert_hf_checkpoint.py \
+    --checkpoint_dir checkpoints/PY007/TinyLlama-1.1B-intermediate-step-480k-1T
+```
+
+You're done! To execute the model just run:
+
+```bash
+pip install sentencepiece
+
+python chat/base.py --checkpoint_dir checkpoints/PY007/TinyLlama-1.1B-intermediate-step-480k-1T
+```
+## Download [StableLM](https://github.com/Stability-AI/StableLM) weights
+
+StableLM is a family of generative language models trained by StabilityAI, trained on a dataset derived from [The Pile](https://pile.eleuther.ai/) but 3x larger, for a total of 1.5 trillion tokens. Weights are released under the [CC-BY-SA license](https://creativecommons.org/licenses/by-sa/4.0).
+
+For more info on the models, please see the [StableLM repository](https://github.com/EleutherAI/pythia). 3B and a 7B checkpoints have been released, both after pre-training and after instruction tuning, using a combination of Stanford's Alpaca, Nomic-AI's gpt4all, RyokoAI's ShareGPT52K datasets, Databricks labs' Dolly, and Anthropic's HH.
+
+To see all the available checkpoints for StableLM, run:
+
+```bash
+python scripts/download.py | grep stablelm
+```
+
+which will print
+
+```text
+stabilityai/stablelm-base-alpha-3b
+stabilityai/stablelm-base-alpha-7b
+stabilityai/stablelm-tuned-alpha-3b
+stabilityai/stablelm-tuned-alpha-7b
+```
+
+In order to use a specific StableLM checkpoint, for instance [stablelm-base-alpha-3b](http://huggingface.co/stabilityai/stablelm-base-alpha-3b), download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id stabilityai/stablelm-base-alpha-3b
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install tokenizers
+
+python generate/base.py --prompt "Hello, my name is" --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+## Download [LongChat](https://lmsys.org/blog/2023-06-29-longchat) weights
+
+LongChat is an open-source family of chatbots based on LLaMA featuring an extended context length up to 16K tokens.
+The technique used to extend the context length is described in [this blogpost](https://kaiokendev.github.io/context).
+
+To see all the available checkpoints, run:
+
+```bash
+python scripts/download.py | grep longchat
+```
+
+which will print
+
+```text
+lmsys/longchat-7b-16k
+lmsys/longchat-13b-16k
+```
+
+In order to use a specific checkpoint, for instance [longchat-7b-16k](https://huggingface.co/lmsys/longchat-7b-16k), download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id lmsys/longchat-7b-16k
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/lmsys/longchat-7b-16k
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install sentencepiece
+
+python chat/base.py --checkpoint_dir checkpoints/lmsys/longchat-7b-16k
+```
+## Download [Pythia](https://github.com/EleutherAI/pythia) weights
+
+EleutherAI's project Pythia combines interpretability analysis and scaling laws to understand how knowledge develops and evolves during training in autoregressive transformers. Weights are released under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0).
+
+For detailed info on the models, their training, and their behavior, please see the [Pythia repository](https://github.com/EleutherAI/pythia).
+It includes a suite of 8 checkpoints (weights) on 2 different datasets: [The Pile](https://pile.eleuther.ai/), as well as The Pile with deduplication applied.
+
+To see all the available checkpoints for Pythia, run:
+
+```bash
+python scripts/download.py | grep pythia
+```
+
+which will print
+
+```text
+EleutherAI/pythia-70m
+EleutherAI/pythia-160m
+EleutherAI/pythia-410m
+EleutherAI/pythia-1b
+EleutherAI/pythia-1.4b
+EleutherAI/pythia-2.8b
+EleutherAI/pythia-6.9b
+EleutherAI/pythia-12b
+EleutherAI/pythia-70m-deduped
+EleutherAI/pythia-160m-deduped
+EleutherAI/pythia-410m-deduped
+EleutherAI/pythia-1b-deduped
+EleutherAI/pythia-1.4b-deduped
+EleutherAI/pythia-2.8b-deduped
+EleutherAI/pythia-6.9b-deduped
+EleutherAI/pythia-12b-deduped
+```
+
+In order to use a specific Pythia checkpoint, for instance [pythia-1b](https://huggingface.co/EleutherAI/pythia-1b), download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id EleutherAI/pythia-1b
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/EleutherAI/pythia-1b
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install tokenizers
+
+python generate/base.py --prompt "Hello, my name is" --checkpoint_dir checkpoints/EleutherAI/pythia-1b
+```
+# Resource Tables
+
+- Last updated: 10/20/2023 
+- Lit-GPT version: commit 8641822
+- Hardware: NVIDIA A100-SXM4-40GB
+- OS: Ubuntu 22.04.3 LTS (x86_64)
+- Nvidia driver version: 525.125.06
+- Relevant libraries
+  - CMake 3.26.4
+  - Libc glibc-2.35 
+  - PyTorch 2.1.0+cu121
+  - Lightning 2.1.0.rc0
+  - Bitsandbytes 0.41.1
+
+This document provides an overview and examples of hardware requirements when running models in Lit-GPT.
+
+For additional tips on lowering the GPU memory footprint, please also see the [Dealing with out-of-memory (OOM) errors](oom.md) document.
+
+All experiments were run using 16-bit brain floating point precision (`--precision bf16-true`). If your GPU does not support brain floating point precision, you can use regular 16-bit floating point precision (`--precision 16-true`).
+
+All experiments were conducted using the Alpaca dataset with its default length. Note that due to different tokenizers being used by the different models, the number of tokens in the longest training example differs based on the model:
+
+- phi1.5: 1044 tokens
+- StableLM Alpha: 1034 tokens
+- Llama 2: 1304 tokens
+- Falcon 1079 tokens
+
+Note that the number of tokens in the training set does not affect the supported context width (block size) of the models, which is as follows:
+
+- phi1.5: 2048 tokens
+- StableLM 3B Alpha: 4096 tokens
+- Llama 2: 4048 tokens
+- Falcon: 2048 tokens
+- CodeLlama 13B: 16384 tokens
+
+&nbsp;
+
+## Finetuning with LoRA on 1 GPU
+
+The following experiments were conducated on 1xA100 with a minibatch size of 128 using the `finetune/lora.py` script.
+
+| Size  | Model         | Quantization | Microbatch size | Trainable parameters | Max GPU RAM | Time 1k iterations | Time 50k iter (extrapolated) |
+| ----- | ------------- | ------------ | --------------- | -------------------- | ----------- | ------------------ | ---------------------------- |
+| 1.3 B | phi-1.5       | None         | 1               | 1,572,864            | 4.82 GB     | 1.62 min           | 80.91 min                    |
+| 1.3 B | phi-1.5       | bnb.nf4      | 1               | 1,572,864            | 3.78 GB     | 1.77 min           | 88.36 min                    |
+| 1.3 B | phi-1.5       | bnb.nf4-dq   | 1               | 1,572,864            | 3.72 GB     | 1.87 min           | 93.39 min                    |
+| 1.3 B | phi-1.5       | None         | 2               | 1,572,864            | 6.76 GB     | 1.65 min           | 82.44 min                    |
+| 1.3 B | phi-1.5       | None         | 4               | 1,572,864            | 10.68 GB    | 1.70 min           | 84.79 min                    |
+|       |               |              |                 |                      |             |                    |                              |
+| 3 B   | StableLM Alpha | None         | 1               | 2,097,152            | 9.69 GB     | 1.24 min           | 62.23 min                    |
+| 3 B   | StableLM Alpha | bnb.nf4      | 1               | 2,097,152            | 6.35 GB     | 1.82 min           | 91.22 min                    |
+| 3 B   | StableLM Alpha | bnb.nf4-dq   | 1               | 2,097,152            | 6.19 GB     | 1.87 min           | 93.58 min                    |
+| 3 B   | StableLM Alpha | None         | 2               | 2,097,152            | 12.10 GB    | 1.33 min           | 66.68 min                    |
+| 3 B   | StableLM Alpha | None         | 4               | 2,097,152            | 16.92 GB    | 1.50 min           | 74.89 min                    |
+|       |               |              |                 |                      |             |                    |                              |
+| 7 B   | Llama 2       | None         | 1               | 4,194,304            | 21.30 GB    | 2.36 min           | 118.03 min                   |
+| 7 B   | Llama 2       | bnb.nf4      | 1               | 4,194,304            | 14.14 GB    | 3.68 min           | 183.88 min                   |
+| 7 B   | Llama 2       | bnb.nf4-dq   | 1               | 4,194,304            | 13.84 GB    | 3.83 min           | 191.66 min                   |
+| 7 B   | Llama 2       | None         | 2               | 4,194,304            | 29.07 GB    | 2.52 min           | 125.97 min                   |
+| 7 B   | Llama 2       | None         | 4               | 4,194,304            | OOM         | -                  | -                            |
+|       |               |              |                 |                      |             |                    |                              |
+| 13 B  | Llama 2       | None         | 1               | 6,553,600            | 38.12 GB    | 3.19 min           | 159.43 min                   |
+| 13 B  | Llama 2       | bnb.nf4      | 1               | 6,553,600            | 23.14 GB    | 6.38 min           | 319.03 min                   |
+| 13 B  | Llama 2       | bnb.nf4-dq   | 1               | 6,553,600            | 22.55 GB    | 6.55 min           | 327.32 min                   |
+| 13 B  | Llama 2       | None         | 2               | 6,553,600            | OOM         | -                  | -                            |
+| 13 B  | Llama 2       | None         | 4               | 6,553,600            | OOM         | -                  | -                            |
+|       |               |              |                 |                      |             |                    |                              |
+| 40 B  | Falcon        | None         | 1               | 12,042,240           | OOM         | -                  | -                            |
+| 40 B  | Falcon        | bnb.nf4      | 1               | 12,042,240           | OOM         | -                  | -                            |
+| 40 B  | Falcon        | bnb.nf4-dq   | 1               | 12,042,240           | OOM         | -                  | -                            |
+
+&nbsp;
+
+## Finetuning with LoRA on Multiple GPUs
+
+The following experiments were conducated on multiple A100 GPUs with a minibatch size of 128 using the `finetune/lora.py` script.
+
+| Size  | Model         | Quantization | Microbatch size | Trainable parameters | GPU      | Max GPU RAM | Time 1k iterations | Time 50k iter (extrapolated) |
+| ----- | ------------- | ------------ | --------------- | -------------------- | -------- | ----------- | ------------------ | ---------------------------- |
+| 1.3 B | phi-1.5       | None         | 1               | 1,572,864            | 2 x A100 | 4.86 GB     | 3.81 min           | 190.47 min                   |
+| 1.3 B | phi-1.5       | bnb.nf4      | 1               | 1,572,864            | 2 x A100 | N/A         | -                  | -                            |
+| 1.3 B | phi-1.5       | bnb.nf4-dq   | 1               | 1,572,864            | 2 x A100 | N/A         | -                  | -                            |
+| 1.3 B | phi-1.5       | None         | 2               | 1,572,864            | 2 x A100 | 5.05 GB     | 3.63 min           | 181.31 min                   |
+| 1.3 B | phi-1.5       | None         | 4               | 1,572,864            | 2 x A100 | 5.88 GB     | 3.64 min           | 181.76 min                   |
+|       |               |              |                 |                      |          |             |                    |                              |
+| 3 B   | StableLM Alpha | None         | 1               | 2,097,152            | 2 x A100 | 12.75 GB    | 2.92 min           | 145.96 min                   |
+| 3 B   | StableLM Alpha | None         | 2               | 2,097,152            | 2 x A100 | 12.94 GB    | 3.06 min           | 153.10 min                   |
+| 3 B   | StableLM Alpha | None         | 4               | 2,097,152            | 2 x A100 | 13.45 GB    | 3.86 min           | 192.99 min                   |
+|       |               |              |                 |                      |          |             | -                  | -                            |
+| 7 B   | Llama 2       | None         | 1               | 4,194,304            | 2 x A100 | 22.18 GB    | 5.93 min           | 296.62 min                   |
+| 7 B   | Llama 2       | None         | 2               | 4,194,304            | 2 x A100 | 22.47 GB    | 6.48 min           | 324.03 min                   |
+| 7 B   | Llama 2       | None         | 4               | 4,194,304            | 2 x A100 | 23.39 GB    | 8.66 min           | 432.82 min                   |
+|       |               |              |                 |                      |          |             |                    |                              |
+| 13 B  | Llama 2       | None         | 1               | 6,553,600            | 2 x A100 | OOM         | -                  | -                            |
+| 13 B  | Llama 2       | bnb.nf4      | 1               | 6,553,600            | 2 x A100 | N/A         | -                  | -                            |
+| 13 B  | Llama 2       | bnb.nf4-dq   | 1               | 6,553,600            | 2 x A100 | N/A         | -                  | -                            |
+|       |               |              |                 |                      |          |             |                    |                              |
+| 13 B  | Llama 2       | None         | 1               | 6,553,600            | 4 x A100 | 35.57 GB    | 10.25 min          | 512.5 min                    |
+| 40 B  | Falcon        | None         | 1               | 12,042,240           | 4 x A100 | OOM         | -                  | -                            |
+
+&nbsp;
+
+## Single-GPU Inference
+
+| Size  | Model          | Quantization | GPU      | Max GPU RAM                                | Token/sec |
+|-------|----------------|--------------|----------|--------------------------------------------|-----------|
+| 1.3 B | phi-1.5        | None         | 1 x A100 | 2.86 GB                                   | 42.56     |
+| 1.3 B | phi-1.5        | bnb.nf4      | 1 x A100 | 1.39 GB                                   | 22.89     |
+| 1.3 B | phi-1.5        | bnb.nf4-dq   | 1 x A100 | 1.33 GB                                   | 22.75     |
+| 1.3 B | phi-1.5        | gptq.int4    | 1 x A100 | 1.16 GB                                   | 6.51      |
+|       |                |              |          |                                           |           |
+| 3 B   | StableLM Alpha | None         | 1 x A100 | 7.30 GB                                   | 49.01     |
+| 3 B   | StableLM Alpha | bnb.nf4      | 1 x A100 | 3.20 GB                                   | 29.04     |
+| 3 B   | StableLM Alpha | bnb.nf4-dq   | 1 x A100 | 3.04 GB                                   | 27.15     |
+| 3 B   | StableLM Alpha | gptq.int4    | 1 x A100 | 2.43 GB                                   | 5.9       |
+|       |               |              |          |                                           |           |
+| 7 B   | Llama 2       | None         | 1 x A100 | 13.52 GB                                  | 30.97     |
+| 7 B   | Llama 2       | bnb.nf4      | 1 x A100 | 4.57 GB                                   | 19.98     |
+| 7 B   | Llama 2       | bnb.nf4-dq   | 1 x A100 | 4.26 GB                                   | 17.3      |
+| 7 B   | Llama 2       | gptq.int4    | 1 x A100 | 3.93 GB                                   | 5.04      |
+|       |               |              |          |                                           |           |
+| 13 B  | Llama 2       | None         | 1 x A100 | 26.21 GB                                  | 24.82     |
+| 13 B  | Llama 2       | bnb.nf4      | 1 x A100 | 8.32 GB                                   | 16.73     |
+| 13 B  | Llama 2       | bnb.nf4-dq   | 1 x A100 | 7.72 GB                                   | 14.43     |
+| 13 B  | Llama 2       | gptq.int4    | 1 x A100 | 7.14 GB                                   | 4.17      |
+|       |               |              |          |                                           |           |
+| 34 B  | CodeLlama     | None         | 1 x A100 | OOM                                       | -         |
+| 34 B  | CodeLlama     | bnb.nf4      | 1 x A100 | 20.52 GB                                  | 14.32     |
+| 34 B  | CodeLlama     | bnb.nf4-dq   | 1 x A100 | 18.95 GB                                  | 12.37     |
+| 34 B  | CodeLlama     | gptq.int4    | 1 x A100 | OOM (quantize script)                     | -         |
+|       |               |              |          |                                           |           |
+| 40 B  | Falcon        | None         | 1 x A100 | OOM                                       | -         |
+| 40 B  | Falcon        | bnb.nf4      | 1 x A100 | 26.55 GB                                  | 13.25     |
+| 40 B  | Falcon        | bnb.nf4-dq   | 1 x A100 | 24.63 GB                                  | 11.64     |
+| 40 B  | Falcon        | gptq.int4    | 1 x A100 | OOM (quantize script)                     | -         |
+|       |               |              |          |                                           |           |
+| 70 B  | Llama 2       | None         | 1 x A100 | OOM                                       | -         |
+| 70 B  | Llama 2       | bnb.nf4      | 1 x A100 | CUDA error: CUBLAS_STATUS_NOT_INITIALIZED | -         |
+| 70 B  | Llama 2       | bnb.nf4-dq   | 1 x A100 | 37.21 GB                                  | 7.97      |
+| 70 B  | Llama 2       | gptq.int4    | 1 x A100 | OOM (quantize script)                     | -         |
+# Finetuning with Adapter
+
+Adapter, first introduced for the LLaMA model as [LLaMA-Adapter](https://arxiv.org/abs/2303.16199), is a form of prefix-tuning that prepends a learnable adaption-prompt to the inputs of the attention blocks in an LLM. In total, there are only ~500k parameters to update during finetuning in StableLM 3B, which significantly reduces the memory footprint and speeds up training.
+
+We are able to demonstrate instruction-finetuning Lit-GPT StableLM 3B on the [Alpaca](https://github.com/tatsu-lab/stanford_alpaca) dataset on a **single RTX 3060 GPU**. If using 8 GPUs, finetuning can be completed in under 1 hour.
+
+If you are new to Adapter and are interested to learn more about how it works before proceeding with the finetuning guide below, you might find our article [Understanding Parameter-Efficient Finetuning of Large Language Models: From Prefix Tuning to LLaMA-Adapters](https://lightning.ai/pages/community/article/understanding-llama-adapters/) helpful.
+
+LLaMA-Adapter v2 extends the original LLaMA-Adapter idea by adding trainable bias and scale parameters to each linear layer in the transformer. Furthermore, LLaMA-Adapter v2 makes the normalization layers trainable. Where the StableLM 3B model has 500k trainable parameters with GPT v1, GPT-Adapter v2 adds an additional 1.5 M trainable parameter for the bias and scale parameters and ~300k trainable parameters for the normalization layers. So, adapter v2 has ~2.3 M trainable parameters in total.
+
+## Preparation
+
+The steps here only need to be done once:
+
+1. Follow the instructions in the [README](../README.md) to install the dependencies.
+2. Download and convert the weights following our [guide](download_stablelm.md).
+3. Download the data and generate the Alpaca instruction tuning dataset:
+
+```bash
+python scripts/prepare_alpaca.py --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+or [prepare your own dataset](#tune-on-your-dataset).
+
+For more information about dataset preparation, also see the [prepare_dataset.md](./prepare_dataset.md) tutorial.
+
+## Running the finetuning
+
+```bash
+python finetune/adapter.py --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+or for Adapter V2
+
+```bash
+python finetune/adapter_v2.py --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+The finetuning requires at least one GPU with ~12 GB memory.
+You can speed up training by setting the `devices` variable in the script to utilize more GPUs if available.
+Depending on the available GPU memory, you can also tune the `micro_batch_size` parameter to utilize the GPU efficiently.
+To fit Adapter V2 to 12GB memory set micro_batch_size = 2.
+
+For example, the following settings will let you finetune the model in under 1 hour:
+
+```python
+devices = 4
+micro_batch_size = 4
+```
+
+This script will save checkpoints periodically to the `out_dir` directory. If you are finetuning different models or on your own dataset, you can specify an output directory with your preferred name:
+
+```bash
+python finetune/adapter.py --out_dir out/adapter/my-model-finetuned
+```
+
+or for Adapter V2
+
+```bash
+python finetune/adapter_v2.py --out_dir out/adapter_v2/my-model-finetuned
+```
+
+If your GPU does not support `bfloat16`, you can pass the `--precision 32-true` argument.
+For instance, to fine-tune on MPS (the GPU on modern Macs), you can run
+
+```bash
+python finetune/adapter.py --out_dir out/adapter/my-model-finetuned --precision 32-true
+```
+
+Note that `mps` as the accelerator will be picked up automatically by Fabric when running on a modern Mac.
+
+## Test the model
+
+You can test the finetuned model with your own instructions by running:
+
+```bash
+python generate/adapter.py \
+    --prompt "Recommend a movie to watch on the weekend." \
+    --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+or for Adapter V2
+
+```bash
+python generate/adapter_v2.py \
+    --prompt "Recommend a movie to watch on the weekend." \
+    --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+Output:
+
+```text
+A good movie to watch on the weekend would be The Lion King, since it's a classic family film that everyone can enjoy...
+```
+
+If your GPU supports `bfloat16`, the script will automatically use it.
+
+## Tune on your dataset
+
+With only a few modifications, you can prepare and train on your own instruction dataset.
+
+1. Create a json file in which each row holds one instruction-response pair.
+   A row has an entry for 'instruction', 'input', and 'output', where 'input' is optional an can be
+   the empty string if the instruction doesn't require a context. Below is an example json file:
+
+    ```text
+    [
+        {
+            "instruction": "Arrange the given numbers in ascending order.",
+            "input": "2, 4, 0, 8, 3",
+            "output": "0, 2, 3, 4, 8"
+        },
+        ...
+    ]
+    ```
+
+2. Make a copy of `scripts/prepare_alpaca.py` and name it what you want:
+
+    ```bash
+    cp scripts/prepare_alpaca.py scripts/prepare_mydata.py
+    ```
+
+3. Modify `scripts/prepare_mydata.py` to read the json data file.
+4. Run the script to generate the preprocessed, tokenized train-val split:
+
+    ```bash
+    python scripts/prepare_mydata.py --destination_path data/mydata/
+    ```
+
+5. Run `finetune/adapter.py` by passing in the location of your data (and optionally other parameters):
+
+    ```bash
+    python finetune/adapter.py \
+        --data_dir data/mydata/ \
+        --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b \
+        --out_dir data/mydata-finetuned
+    ```
+# Pretrain Llama 2 on RedPajama
+
+This tutorial will walk you through setting up the RedPajama dataset and launching the pretraining script.
+
+## What's RedPajama
+
+[RedPajama](https://github.com/togethercomputer/RedPajama-Data) is an open-source reproduction of the original LLaMA training dataset.
+
+It contains a total of 1.2 trillion tokens, divided into
+
+| Name          | Size |
+|---------------|------|
+| Commoncrawl   | 878B |
+| C4            | 175B |
+| GitHub        | 59B  |
+| Books         | 26B  |
+| ArXiv         | 28B  |
+| Wikipedia     | 24B  |
+| StackExchange | 20B  |
+
+The [RedPajama repo](https://github.com/togethercomputer/RedPajama-Data) contains the source code for collecting and preparing the dataset, which is Apache 2.0 licensed.
+
+The data itself is licensed according to the original licenses with which its individual parts were released.
+The GitHub datasets are limited to MIT, BSD, or Apache 2.0 repositories.
+
+Along with the full [RedPajama-1T dataset](https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T),
+the smaller [RedPajama-1T-Sample](https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T-Sample) 1B sample dataset is also available for development.
+
+You can download the data using git lfs:
+
+```bash
+# Make sure you have git-lfs installed (https://git-lfs.com):
+git lfs install
+```
+
+```bash
+# The full 1 trillion token dataset:
+git clone https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T data/RedPajama-Data-1T
+```
+
+```bash
+# The 1 billion token subset
+git clone https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T-Sample \
+  data/RedPajama-Data-1T-Sample
+```
+
+## Prepare RedPajama for training
+
+The full dataset consists of 2084 `jsonl` files (the sample dataset contains 11). In order to start pretraining lit-gpt
+on it, you need to read, tokenize, and write the data in binary chunks. This will leverage the `PackedDataset`
+streaming dataset that comes with lit-gpt. You will need to have the tokenizer config available:
+
+```bash
+pip install huggingface_hub sentencepiece
+
+python scripts/download.py \
+   --repo_id meta-llama/Llama-2-7b-chat-hf \
+   --access_token your_hf_token
+```
+
+Then, run
+
+```bash
+python scripts/prepare_redpajama.py \
+  --source_path data/RedPajama-Data-1T \
+  --checkpoint_dir checkpoints/meta-llama/Llama-2-7b-hf/ \
+  --destination_path data/lit-redpajama
+```
+
+or
+
+```bash
+python scripts/prepare_redpajama.py \
+  --source_path data/RedPajama-Data-1T-Sample \
+  --checkpoint_dir checkpoints/meta-llama/Llama-2-7b-hf/ \
+  --destination_path data/lit-redpajama-sample \
+  --sample True
+```
+
+for the sample dataset.
+
+In the above we are assuming that you will be using the same tokenizer as used in LLaMA, but any trained [SentencePiece](https://github.com/google/sentencepiece) tokenizer with a 32000 vocabulary size will do here.
+
+The script will take a while to run, so time for :tea: (The 1B sample script takes about 45 min for the data preparation.)
+
+## Pretraining
+
+Running the pretraining script with its default settings requires at least 4 GPUs with 40GB+ each (A100).
+
+```bash
+python pretrain/redpajama.py \
+  --devices 4 \
+  --train_data_dir data/lit-redpajama
+```
+
+For running on the sample dataset:
+
+```bash
+python pretrain/redpajama.py \
+  --devices 4 \
+  --train_data_dir data/lit-redpajama-sample
+```
+
+The script will save checkpoints periodically to the folder `out/`.
+
+By default, the `pretrain/redpajama.py` script will pretrain the Llama 2 7B model with FSDP in
+`bfloat16` precision and gradient accumulation.
+
+You can easily change the size of the model by passing a different string to the model name variable
+
+```python
+model_name = "Llama-2-7b-hf"
+```
+
+at the top of this script.
+
+The currently supported model names are contained in the [config.py](https://github.com/Lightning-AI/lit-gpt/lit_gpt/config.py) file.
+You can
+
+1) either search this file for lines containing "name =",
+2) or run `python scripts/download.py` without additional command line arguments
+
+Keep in mind that the original LLaMA training for the 7B model required 83k A100 80GB
+hours, so you'll need access to a cluster.
+
+Once you're in a cluster, you can follow [these instructions](https://lightning.ai/docs/fabric/stable/fundamentals/launch.html#launch-on-a-cluster)
+to launch the script across machines:
+
+- [SLURM cluster](https://lightning.ai/docs/fabric/stable/guide/multi_node/slurm.html)
+- [Barebones cluster](https://lightning.ai/docs/fabric/stable/guide/multi_node/barebones.html)
+- [MPI](https://lightning.ai/docs/fabric/stable/guide/multi_node/other.html)
+
+The [script contains several configurations and hyperparameters](https://github.com/Lightning-AI/lit-gpt/blob/main/pretrain/openwebtext.py#L23-L46) you can tweak.
+
+For instance, `micro_batch_size` should be adjusted so the process will use the available
+GPU memory. For more tips to avoid out-of-memory issues, please also see the more detailed
+[Dealing with out-of-memory (OOM) errors](oom.md) guide.
+
+Last, logging is kept minimal in the script. In order to use a particular logger
+please refer to <https://lightning.ai/docs/fabric/stable/api/loggers.html> or
+call a logging client library like `wandb` directly.
+## Download [phi-1.5](https://arxiv.org/abs/2309.05463) weights
+
+A team at Microsoft Research has made available Phi 1.5, which is a 1.3 billion parameter model optimized for common sense reasoning in natural language, showing performance on par with models 5x its size, especially in grade-school mathematics and basic coding. This model retains characteristics of larger LLMs, and significant improvement was noted in reducing toxic and biased generations by avoiding web data. It's also worth highlighting that while this model performs well on language understanding and common sense reasoning tasks, it is a base model that has not undergone any supervised instruction finetuning or finetuning with RLHF.
+
+The model was trained the same data sources (7B tokens) as its [phi-1](https://arxiv.org/abs/2306.11644) predecessor, which includes
+
+- a Python code subset from [The Stack](https://arxiv.org/abs/2211.15533) v1.2
+- Q&A texts from [StackOverflow](https://archive.org/download/stackexchange)
+- code from DeepMind [code_contests](https://github.com/deepmind/code_contests)
+- synthetic Python textbooks and exercises generated by [gpt-3.5-turbo-0301](https://platform.openai.com/docs/models/gpt-3-5)
+
+In addition, to create phi-1.5, the authors included additional textbook-quality synthetic text (roughly 20B tokens) in natural language, which was created using the [Textbooks Are All You Need](https://arxiv.org/abs/2306.11644) approach.
+
+
+The model weights are released under a [*Microsoft Research license*](https://huggingface.co/microsoft/phi-1_5/blob/main/README.md#license).
+
+
+In order to use the phi-1.5 model checkpoint, which requires about 3 Gb of disk space, download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id microsoft/phi-1_5
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/microsoft/phi-1_5
+```
+
+You're done! To execute the model just run:
+
+```bash
+pip install tokenizers
+
+python generate/base.py --prompt "Hello, my name is" --checkpoint_dir checkpoints/microsoft/phi-1_5
+```
+## Download [OpenLLaMA](https://github.com/openlm-research/open_llama) weights
+
+OpenLLaMA is a permissively licensed open source reproduction of [Meta AI‚Äôs LLaMA](https://github.com/facebookresearch/llama)
+7B and 13B checkpoints trained on the [RedPajama dataset](https://github.com/togethercomputer/RedPajama-Data).
+The weights can serve as the drop in replacement of LLaMA in existing implementations. We also provide a smaller 3B variant.
+
+To see all the available checkpoints for Open LLaMA, run:
+
+```bash
+python scripts/download.py | grep open_llama
+```
+
+which will print
+
+```text
+openlm-research/open_llama_3b
+openlm-research/open_llama_7b
+openlm-research/open_llama_13b
+```
+
+In order to use a specific OpenLLaMA checkpoint, for instance [open_llama_3b](https://huggingface.co/openlm-research/open_llama_3b), download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id openlm-research/open_llama_3b
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/openlm-research/open_llama_3b
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install sentencepiece
+
+python generate/base.py --prompt "Hello, my name is" --checkpoint_dir checkpoints/openlm-research/open_llama_3b
+```
+## Converting Lit-GPT weights to HuggingFace Transformers
+
+Lit-GPT weights need to be converted to a format that HuggingFace understands with a [conversion script](../scripts/convert_lit_checkpoint.py) before our scripts can run.
+
+We provide a helpful script to convert models Lit-GPT models back to their equivalent HuggingFace Transformers format:
+
+```sh
+python scripts/convert_lit_checkpoint.py \
+    --checkpoint_path path/to/litgpt/model.pth \
+    --output_path where/to/save/the/converted.ckpt \
+    --config_path path/to/litgpt/config.json
+```
+
+These paths are just placeholders, you will need to customize them based on which finetuning or pretraining script you ran and it's configuration.
+
+
+Please note that if you want to convert a model that has been fine-tuned using an adapter like LoRA, these weights should be [merged](../scripts/merge_lora.py) to the checkpoint prior to converting. 
+
+```sh
+python scripts/merge_lora.py \
+    --checkpoint_dir path/to/litgpt/model.pth \
+    --lora_path path/to/litgpt/lora_finetuned.pth \
+    --out_dir where/to/save/the/merged.ckpt
+```
+
+## Download [FreeWilly 2](https://stability.ai/blog/freewilly-large-instruction-fine-tuned-models) weights
+
+Stability AI announced FreeWilly inspired by the methodology pioneered by Microsoft in its paper: "Orca: Progressive Learning from Complex Explanation Traces of GPT-4‚Äù.
+FreeWilly2 leverages the Llama 2 70B foundation model to reach a performance that compares favorably with GPT-3.5 for some tasks.
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id stabilityai/FreeWilly2
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/stabilityai/FreeWilly2
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install sentencepiece
+
+python chat/base.py --checkpoint_dir checkpoints/stabilityai/FreeWilly2
+```
+## Download [Mistral](https://mistral.ai) weights
+
+[Mistral 7B](https://mistral.ai/news/announcing-mistral-7b) is Apache 2.0 licensed and can be used without restrictions. It:
+
+* Outperforms Llama 2 13B on all benchmarks
+* Outperforms Llama 1 34B on many benchmarks
+* Approaches CodeLlama 7B performance on code, while remaining good at English tasks
+* Uses Grouped-query attention (GQA) for faster inference
+* ~~Uses Sliding Window Attention (SWA) to handle longer sequences at smaller cost~~.
+  This project's implementation does not use Sliding Window Attention, so the context length is limited to 4096 tokens.
+
+Details about the data used to train the model or training procedure have not been made public.
+
+In order to use the Mistral 7B model checkpoint, which requires about 14 Gb of disk space, download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id mistralai/Mistral-7B-Instruct-v0.1
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/mistralai/Mistral-7B-Instruct-v0.1
+```
+
+You're done! To execute the model just run:
+
+```bash
+pip install sentencepiece
+
+python chat/base.py --checkpoint_dir checkpoints/mistralai/Mistral-7B-Instruct-v0.1
+```
+# Quantize the model
+
+This document provides different strategies for quantizing the various models available in Lit-GPT to reduce GPU memory usage, which is useful for running larger models on certain GPU hardware.
+
+**All the examples below were run on an A100 40GB GPU with CUDA 12.1.**
+
+> [!NOTE]
+> Quantization also supports finetuning via [QLoRA](finetune_lora.md)
+
+## Baseline
+
+It's useful to start with a baseline to have a reference point for memory savings via the various quantization methods.
+
+```bash
+python generate/base.py --checkpoint_dir checkpoints/tiiuae/falcon-7b --precision 32-true --max_new_tokens 256
+...
+Time for inference 1: 6.93 sec total, 36.96 tokens/sec.
+Memory used: 28.95 GB
+```
+
+First, using a lower precision compared to 32-bit float can result in two times reduced memory consumption. You can either try setting `--precision 16-true` for regular 16-bit precision or  `--precision bf16-true` if your GPU supports brain-float 16-bit precision. ([This brief video](https://lightning.ai/courses/deep-learning-fundamentals/9.0-overview-techniques-for-speeding-up-model-training/unit-9.1-accelerated-model-training-via-mixed-precision-training/) explains the difference between regular 16-bit and bf16-bit precision.)
+
+In short, when `--precision bf16-true` or `--precision 16-true` is used, the model weights will automatically be converted and consume less memory.
+However, this might not be enough for large models or when using GPUs with limited memory.
+
+```bash
+python generate/base.py --checkpoint_dir checkpoints/tiiuae/falcon-7b --precision bf16-true --max_new_tokens 256
+...
+Time for inference 1: 5.37 sec total, 47.66 tokens/sec.
+Memory used: 14.50 GB
+```
+
+To reduce the memory requirements further, Lit-GPT supports several quantization techniques, which are shown below.
+
+> [!NOTE]
+> Most quantization examples below also use the `--precision bf16-true` setting explained above. If your GPU does not support `bfloat16`, you can change it to `--precision 16-true`.
+
+## `bnb.nf4`
+
+Enabled with [bitsandbytes](https://github.com/TimDettmers/bitsandbytes). Check out the [paper](https://arxiv.org/abs/2305.14314v1) to learn more about how it works.
+
+> [!NOTE]
+> `bitsandbytes` only supports `CUDA` devices and the `Linux` operating system.
+> Windows users should use [WSL2](https://learn.microsoft.com/en-us/windows/ai/directml/gpu-cuda-in-wsl).
+
+Uses the normalized float 4 (nf4) data type. This is recommended over "fp4" based on the paper's experimental results and theoretical analysis.
+
+```bash
+pip install scipy bitsandbytes  # scipy is required until https://github.com/TimDettmers/bitsandbytes/pull/525 is released
+
+python generate/base.py --quantize bnb.nf4 --checkpoint_dir checkpoints/tiiuae/falcon-7b --precision bf16-true --max_new_tokens 256
+...
+Time for inference 1: 6.80 sec total, 37.62 tokens/sec
+Memory used: 5.72 GB
+```
+
+## `bnb.nf4-dq`
+
+Enabled with [bitsandbytes](https://github.com/TimDettmers/bitsandbytes). Check out the [paper](https://arxiv.org/abs/2305.14314v1) to learn more about how it works.
+
+"dq" stands for "Double Quantization" which reduces the average memory footprint by quantizing the quantization constants.
+In average, this amounts to about 0.37 bits per parameter (approximately 3 GB for a 65B model).
+
+```bash
+pip install scipy bitsandbytes  # scipy is required until https://github.com/TimDettmers/bitsandbytes/pull/525 is released
+
+python generate/base.py --quantize bnb.nf4-dq --checkpoint_dir checkpoints/tiiuae/falcon-7b --precision bf16-true --max_new_tokens 256
+...
+Time for inference 1: 8.09 sec total, 30.87 tokens/sec
+Memory used: 5.38 GB
+```
+
+## `bnb.fp4`
+
+Enabled with [bitsandbytes](https://github.com/TimDettmers/bitsandbytes). Check out the [paper](https://arxiv.org/abs/2305.14314v1) to learn more about how it works.
+
+Uses pure FP4 quantization.
+
+```bash
+pip install scipy bitsandbytes  # scipy is required until https://github.com/TimDettmers/bitsandbytes/pull/525 is released
+
+python generate/base.py --quantize bnb.fp4 --checkpoint_dir checkpoints/tiiuae/falcon-7b --precision bf16-true --max_new_tokens 256
+...
+Time for inference 1: 6.92 sec total, 36.98 tokens/sec
+Memory used: 5.72 GB
+```
+
+## `bnb.fp4-dq`
+
+Enabled with [bitsandbytes](https://github.com/TimDettmers/bitsandbytes). Check out the [paper](https://arxiv.org/abs/2305.14314v1) to learn more about how it works.
+
+"dq" stands for "Double Quantization" which reduces the average memory footprint by quantizing the quantization constants.
+In average, this amounts to about 0.37 bits per parameter (approximately 3 GB for a 65B model).
+
+```bash
+pip install scipy bitsandbytes  # scipy is required until https://github.com/TimDettmers/bitsandbytes/pull/525 is released
+
+python generate/base.py --quantize bnb.fp4-dq --checkpoint_dir checkpoints/tiiuae/falcon-7b --precision bf16-true --max_new_tokens 256
+...
+Time for inference 1: 10.02 sec total, 25.54 tokens/sec
+Memory used: 5.38 GB
+```
+
+## `bnb.int8`
+
+Enabled with [bitsandbytes](https://github.com/TimDettmers/bitsandbytes). Check out the [paper](https://arxiv.org/abs/2110.02861) to learn more about how it works.
+
+```bash
+pip install scipy bitsandbytes  # scipy is required until https://github.com/TimDettmers/bitsandbytes/pull/525 is released
+
+python generate/base.py --quantize bnb.int8 --checkpoint_dir checkpoints/tiiuae/falcon-7b --precision 16-true --max_new_tokens 256
+...
+Time for inference 1: 20.22 sec total, 12.66 tokens/sec
+Memory used: 8.70 GB
+```
+
+## `gptq.int4`
+
+Check out the [paper](https://arxiv.org/abs/2210.17323) to learn more about how it works.
+
+This technique needs a conversion of the weights first:
+
+```bash
+pip install datasets
+
+python quantize/gptq.py --precision bf16-true --checkpoint_dir checkpoints/tiiuae/falcon-7b
+...
+Time for quantization: 850.25 sec total
+Memory used: 23.68 GB
+```
+
+It is important to note that this conversion step required a considerable amount of memory (higher than regular inference) and may take a long time, depending on the size of the model.
+
+generation then works as usual with `--quantize gptq.int4` which will load the newly quantized checkpoint file:
+
+```bash
+python generate/base.py --quantize gptq.int4 --checkpoint_dir checkpoints/tiiuae/falcon-7b --precision 32-true --max_new_tokens 256
+...
+Time for inference 1: 34.35 sec total, 7.45 tokens/sec
+Memory used: 5.05 GB
+```
+## Download [RedPajama-INCITE](https://www.together.xyz/blog/redpajama-models-v1) weights
+
+Togethercomputer's RedPajama-INCITE family of models were trained over the [RedPajama v1](https://www.together.xyz/blog/redpajama) dataset, with the same architecture as the popular [Pythia](download_pythia.md) model suite. Weights are released under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0).
+
+The release includes a base model, a chat fine-tuned model, and an instruction tuned model of sizes 3B and 7B.
+
+To see all the available checkpoints for RedPajama-INCITE, run:
+
+```bash
+python scripts/download.py | grep RedPajama
+```
+
+which will print
+
+```text
+togethercomputer/RedPajama-INCITE-Base-3B-v1
+togethercomputer/RedPajama-INCITE-Chat-3B-v1
+togethercomputer/RedPajama-INCITE-Instruct-3B-v1
+togethercomputer/RedPajama-INCITE-7B-Base
+togethercomputer/RedPajama-INCITE-7B-Chat
+togethercomputer/RedPajama-INCITE-7B-Instruct
+togethercomputer/RedPajama-INCITE-Base-7B-v0.1
+togethercomputer/RedPajama-INCITE-Chat-7B-v0.1
+togethercomputer/RedPajama-INCITE-Instruct-7B-v0.1
+```
+
+In order to use a specific RedPajama-INCITE checkpoint, for instance [RedPajama-INCITE-Base-3B-v1](https://huggingface.co/togethercomputer/RedPajama-INCITE-Base-3B-v1), download the weights and convert the checkpoint to the lit-gpt format:
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id togethercomputer/RedPajama-INCITE-Base-3B-v1
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/togethercomputer/RedPajama-INCITE-Base-3B-v1
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install tokenizers
+
+python generate/base.py --prompt "Hello, my name is" --checkpoint_dir checkpoints/togethercomputer/RedPajama-INCITE-Base-3B-v1
+```
+## Download [Code Llama](https://ai.meta.com/blog/code-llama-large-language-model-coding/) weights
+
+Meta developed and publicly released the Code Llama family of large language models (LLMs) on top of Llama 2.
+
+Code Llama models come in three sizes: 7B, 13B, and 34B parameter models. Furthermore, there are three model versions for each size:
+
+- Code Llama: A base model trained on 500B tokens, then and finetuned on 20B tokens.
+- Code Llama-Python: The Code Llama model pretrained on 500B tokens, further trained on 100B additional Python code tokens, and then finetuned on 20B tokens.
+- Code Llama-Instruct: The Code Llama model trained on 500B tokens, finetuned on 20B tokens, and instruction-finetuned on additional 5B tokens.
+
+All models were  trained on 16,000 token contexts and support generations with up to 100,000 tokens of context.
+
+To see all the available checkpoints, run:
+
+```bash
+python scripts/download.py | grep CodeLlama
+```
+
+which will print
+
+```text
+codellama/CodeLlama-7b-hf
+codellama/CodeLlama-7b-Python-hf
+codellama/CodeLlama-7b-Instruct-hf
+codellama/CodeLlama-13b-hf
+codellama/CodeLlama-13b-Python-hf
+codellama/CodeLlama-13b-Instruct-hf
+codellama/CodeLlama-34b-hf
+codellama/CodeLlama-34b-Python-hf
+codellama/CodeLlama-34b-Instruct-hf
+```
+
+In order to use a specific checkpoint, for instance [CodeLlama-7b-Python-hf](https://huggingface.co/codellama/CodeLlama-7b-Python-hf), download the weights and convert the checkpoint to the lit-gpt format.
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id codellama/CodeLlama-7b-Python-hf
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/codellama/CodeLlama-7b-Python-hf
+```
+
+By default, the `convert_hf_checkpoint.py` step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install sentencepiece
+
+python chat/base.py --checkpoint_dir checkpoints/codellama/CodeLlama-7b-Python-hf/
+```
+# LLM Evaluation
+
+&nbsp;
+
+## Using lm-evaluation-harness
+
+You can evaluate Lit-GPT using [EleutherAI's lm-eval](https://github.com/EleutherAI/lm-evaluation-harness/tree/master) framework with a large number of different evaluation tasks.
+
+You need to install the `lm-eval` framework first:
+
+```bash
+pip install https://github.com/EleutherAI/lm-evaluation-harness/archive/refs/heads/master.zip -U
+```
+
+&nbsp;
+
+### Evaluating Lit-GPT base models
+
+Use the following command to evaluate Lit-GPT models on all tasks in Eleuther AI's Evaluation Harness.
+
+```bash
+python eval/lm_eval_harness.py \
+    --checkpoint_dir "checkpoints/meta-llama/Llama-2-7b-hf" \
+    --precision "bf16-true" \
+    --batch_size 4 \
+    --save_filepath "results.json"
+```
+
+To evaluate on LLMs on specific tasks, for example, TruthfulQA and HellaSwag, you can use the `--eval_task` flag as follows:
+
+```bash
+python eval/lm_eval_harness.py \
+    --checkpoint_dir "checkpoints/meta-llama/Llama-2-7b-hf" \
+    --eval_tasks "[truthfulqa_mc,hellaswag]" \
+    --precision "bf16-true" \
+    --batch_size 4 \
+    --save_filepath "results.json"
+```
+
+A list of supported tasks can be found [here](https://github.com/EleutherAI/lm-evaluation-harness/blob/master/docs/task_table.md).
+
+&nbsp;
+
+### Evaluating LoRA-finetuned LLMs
+
+The above command can be used to evaluate models that are saved via a single checkpoint file. This includes downloaded checkpoints and base models finetuned via the full and adapter finetuning scripts.
+
+For LoRA-finetuned models, you need to first merge the LoRA weights with the original checkpoint file as described in the [Merging LoRA Weights](https://github.com/Lightning-AI/lit-gpt/blob/main/tutorials/finetune_lora.md#merging-lora-weights) section of the LoRA finetuning documentation.
+
+&nbsp;
+
+## FAQs
+
+* **How do I evaluate on MMLU?**
+
+  MMLU is available as with lm-eval harness but the task name is not MMLU. You can use `hendrycksTest*` as regex to evaluate on MMLU.
+
+  ```shell
+  python eval/lm_eval_harness.py \
+      --checkpoint_dir "checkpoints/meta-llama/Llama-2-7b-hf" \
+      --precision "bf16-true" \
+      --eval_tasks "[hendrycksTest*]" \
+      --batch_size 4 \
+      --num_fewshot 5 \
+      --save_filepath "results.json"
+  ```
+
+* **Is Truthful MC is not available in lm-eval?**
+
+  It is available as `truthfulqa_mc`.
+## Download [Llama 2](https://ai.meta.com/llama) weights
+
+Meta developed and publicly released the Llama 2 family of large language models (LLMs), a collection of pretrained and
+fine-tuned generative text models ranging in scale from 7 billion to 70 billion parameters. Its fine-tuned LLMs,
+called Llama-2-Chat, are optimized for dialogue use cases. Llama-2-Chat models outperform open-source chat models on
+most benchmarks we tested, and in our human evaluations for helpfulness and safety, are on par with some popular
+closed-source models like ChatGPT and PaLM.
+
+Llama 2 models are trained on 2 trillion tokens (40% more data than LLaMA 1) and have double the context length of LLaMA 1 (4096 tokens).
+
+Llama 2 comes in a range of parameter sizes ‚Äî 7B, 13B, and 70B ‚Äî as well as pretrained and fine-tuned variations.
+
+To see all the available checkpoints, run:
+
+```bash
+python scripts/download.py | grep Llama-2
+```
+
+which will print
+
+```text
+meta-llama/Llama-2-7b-hf
+meta-llama/Llama-2-7b-chat-hf
+meta-llama/Llama-2-13b-hf
+meta-llama/Llama-2-13b-chat-hf
+meta-llama/Llama-2-70b-hf
+meta-llama/Llama-2-70b-chat-hf
+```
+
+In order to use a specific checkpoint, for instance [Llama-2-7b-chat-hf](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf), download the weights and convert the checkpoint to the lit-gpt format.
+
+This requires that you've been granted access to the weights on the HuggingFace hub. You can do so by following the steps at <https://huggingface.co/meta-llama/Llama-2-7b>.
+After access is granted, you can find your HF hub token in <https://huggingface.co/settings/tokens>.
+
+```bash
+pip install huggingface_hub
+
+python scripts/download.py --repo_id meta-llama/Llama-2-7b-chat-hf --access_token your_hf_token
+
+python scripts/convert_hf_checkpoint.py --checkpoint_dir checkpoints/meta-llama/Llama-2-7b-chat-hf
+```
+
+By default, the convert_hf_checkpoint step will use the data type of the HF checkpoint's parameters. In cases where RAM
+or disk size is constrained, it might be useful to pass `--dtype bfloat16` to convert all parameters into this smaller precision before continuing.
+
+You're done! To execute the model just run:
+
+```bash
+pip install sentencepiece
+
+python chat/base.py --checkpoint_dir checkpoints/meta-llama/Llama-2-7b-chat-hf
+```
+# Finetuning with LoRA / QLoRA
+
+[Low-rank adaption (LoRA)](https://arxiv.org/abs/2106.09685) is a technique to approximate the update to the linear layers in a LLM with a low-rank matrix factorization. This significantly reduces the number of trainable parameters and speeds up training with little impact on the final performance of the model.
+We demonstrate this method by instruction-finetuning Lit-GPT StableLM 3B on the [Alpaca](https://github.com/tatsu-lab/stanford_alpaca) dataset on a **single RTX 3090 (24GB) GPU** with CUDA 11.8.
+
+&nbsp;
+
+## Preparation
+
+The steps here only need to be done once:
+
+1. Follow the instructions in the [README](../README.md) to install the dependencies.
+2. Download and convert the weights and save them in the `./checkpoints` folder.
+   Weights can be downloaded following these instructions:
+
+- [StableLM](download_stablelm.md)
+- [Pythia](download_pythia.md)
+- [Redpajama-INCITE](download_redpajama_incite.md)
+- [Falcon](download_falcon.md)
+
+3. Download the data and generate the instruction tuning dataset:
+
+```bash
+python scripts/prepare_alpaca.py \
+  --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+or [prepare your own dataset](#tune-on-your-dataset).
+
+For more information about dataset preparation, also see the [prepare_dataset.md](./prepare_dataset.md) tutorial.
+
+&nbsp;
+
+## Running the Finetuning
+
+```bash
+python finetune/lora.py
+```
+
+The finetuning requires at least one GPU with ~24 GB memory (RTX 3090).
+
+This script will save checkpoints periodically to the folder `out/`.
+
+> [!NOTE]
+> LoRA can be applied to not only `query`, `key` or `value` matrices, but also to `projection`, `mlp` and classification `head`.
+> According to [QLoRA](https://arxiv.org/abs/2305.14314) paper (section 4): "LoRA on all linear transformer block layers are required to match full finetuning performance".
+> By default LoRA is applied only to the `query` and `value` matrices. In order to apply LoRA to other weight matrices - change the variables in `finetune/lora.py` accordingly.
+
+Optionally, finetuning using 4-bit quantization (as in QLoRA) can be enabled via the `--quantize` flag, for example using the 4-bit NormalFloat data type:
+
+```bash
+python finetune/lora.py --quantize "bnb.nf4"
+```
+
+and optionally with double-quantization:
+
+```bash
+python finetune/lora.py --quantize "bnb.nf4-dq"
+```
+
+The table below lists a comparison with different settings on a StableLM 3B model finetuned with LoRA on Alpaca for 1,000 iterations using a microbatch size of 1:
+
+| Settings                                    | Training Memory | Training Time |  Inference Memory |
+|---------------------------------------------|-----------------|---------------|-------------------|
+| Default (bf16-mixed)                        | 26.92 GB        | 1.34 min      | 21.43 GB          |
+| --precision bf16-true                       | 9.69 GB         | 1.24 min      | 7.30 GB           |
+| --precision bf16-true --quantize bnb.nf4    | 6.35 GB         | 1.82 min      | 3.20 GB           |
+| --precision bf16-true --quantize bnb.nf4-dq | 6.19 GB         | 1.87 min      | 3.04 GB           |
+
+The advantages of QLoRA-style quantization are more pronounced in larger models, such as Llama 2 7B. The table below summarizes the results for Llama 2 7B on Alpaca for 1,000 iterations using a microbatch size of 1:
+
+| Settings                                    | Training Memory  | Training Time | Inference Memory |
+|---------------------------------------------|------------------|---------------|------------------|
+| Default (bf16-mixed)                        | OutOfMemoryError | N/A           | 40.21 GB         |
+| --precision bf16-true                       | 21.30 GB         | 2.36 min      | 13.52 GB         |
+| --precision bf16-true --quantize bnb.nf4    | 14.14 GB         | 3.68 min      | 4.57 GB          |
+| --precision bf16-true --quantize bnb.nf4-dq | 13.84 GB         | 3.83 min      | 4.26 GB          |
+
+For additional benchmarks and resource requirements, please see the [Resource Tables](resource-tables.md).
+
+&nbsp;
+
+## Test the Model
+
+You can test the finetuned model with your own instructions by running:
+
+```bash
+python generate/lora.py \
+  --prompt "Recommend a movie to watch on the weekend."
+```
+
+Output:
+
+```text
+I would recommend the movie The Martian (2015). It is a sci-fi movie starring Matt Damon that follows the story of...
+```
+
+If your GPU supports `bfloat16`, you can additionally pass `--precision "bf16-true"` to bring the memory consumption down to ~7.6 GB for StableLM-3B (versus ~15.2  GB for `--precision "32-full"`). In addition, you may use quantization methods, for example `--precision "bf16-true" --quantize "bnb.nf4"` brings the memory consumption further down to ~4.4 GB for StableLM-3B.
+
+&nbsp;
+
+## Tune on Your Dataset
+
+With only a few modifications, you can prepare and train on your own instruction dataset.
+
+1. Create a json file in which each row holds one instruction-response pair.
+   A row has an entry for 'instruction', 'input', and 'output', where 'input' is optional an can be
+   the empty string if the instruction doesn't require a context. Below is an example json file:
+
+   ```text
+   [
+       {
+           "instruction": "Arrange the given numbers in ascending order.",
+           "input": "2, 4, 0, 8, 3",
+           "output": "0, 2, 3, 4, 8"
+       },
+       ...
+   ]
+   ```
+
+2. Make a copy of `scripts/prepare_alpaca.py` and name it what you want:
+
+   ```bash
+   cp scripts/prepare_alpaca.py scripts/prepare_mydata.py
+   ```
+
+3. Modify `scripts/prepare_mydata.py` to read the json data file.
+4. Run the script to generate the preprocessed, tokenized train-val split:
+
+   ```bash
+   python scripts/prepare_mydata.py \
+     --destination_path data/mydata/
+   ```
+
+5. Run `finetune/lora.py` by passing in the location of your data (and optionally other parameters):
+
+   ```bash
+   python finetune/lora.py  \
+     --data_dir data/mydata/ \
+     --out_dir out/myexperiment
+   ```
+
+&nbsp;
+
+## Merging LoRA Weights
+
+By default, the LoRA weights are kept separate from the checkpoint file to save storage space.
+However, you can optionally merge the LoRA weights with the original model checkpoint to create
+a new file to optimize inference speeds. (This will improve inference performance
+because the weights don't have to be added during runtime.)
+
+Let's assume we finetuned a model using LoRA as follows:
+
+```bash
+python finetune/lora.py \
+  --checkpoint_dir "checkpoints/stabilityai/stablelm-base-alpha-3b/" \
+  --data_dir "data/alpaca" \
+  --out_dir "out/lora_weights/stablelm-base-alpha-3b/"
+```
+
+Then, we can merge the LoRA weights with the checkpoint model using the `merge_lora.py` script as shown below:
+
+```bash
+python scripts/merge_lora.py \
+  --checkpoint_dir "checkpoints/stabilityai/stablelm-base-alpha-3b/" \
+  --lora_path "out/lora_weights/stablelm-base-alpha-3b/lit_model_lora_finetuned.pth" \
+  --out_dir "out/lora_merged/stablelm-base-alpha-3b/"
+```
+
+> [!Note]
+> If you changed the LoRA hyperparameters (`lora_r`, `lora_key`, etc.) in the
+> `finetune/lora.py` script, it is important to update the hyperparameter configuration
+> in the `scripts/merge_lora.py` script accordingly. Otherwise, you will encounter size
+> mismatch errors upon merging.
+
+After merging, we can use the `base.py` file for inference using the new checkpoint file. Note that if your new checkpoint directory is different from the original checkpoint directory, we also have to copy over the tokenizer and config files:
+
+```bash
+cp checkpoints/stabilityai/stablelm-base-alpha-3b/*.json \
+out/lora_merged/stablelm-base-alpha-3b/
+```
+
+> [!Note]
+> Some models (for example, Llama 2) also come with a `tokenizer.model` file.
+> In this case, you also need to use an additional copy step:
+> `cp checkpoints/origin/tokenizer.model out/lora_merged/target/`
+
+Then, we should be ready to use the model in inference:
+
+```bash
+python generate/base.py \
+  --checkpoint_dir "out/lora_merged/stablelm-base-alpha-3b/"
+```
+
+Similarly, you can evaluate the model using the `eval/lm_eval_harness.py` script (see the [evaluation](evaluation.md) tutorial for more information):
+
+```bash
+python eval/lm_eval_harness.py \
+  --checkpoint_dir "out/lora_merged/stablelm-base-alpha-3b/" \
+  --precision "bf16-true" \
+  --batch_size 4 \
+  --save_filepath "results.json"
+```
+# Finetuning the whole model
+
+If you are interested in parameter-efficient finetuning, check out [finetune_adapter.md](finetune_adapter.md). In contrast to parameter-efficient finetuning, this "full" approach finetunes all model parameters, which is substantially more expensive. It may only be recommended as a baseline for comparison studies.
+
+## Preparation
+
+The steps here only need to be done once:
+
+1. Follow the instructions in the [README](../README.md) to install the dependencies.
+2. Download and convert the weights following our [guide](download_stablelm.md).
+3. Download the data and generate the Alpaca instruction tuning dataset:
+
+```bash
+python scripts/prepare_alpaca.py --checkpoint_dir checkpoints/tiiuae/falcon-7b
+```
+
+or [prepare your own dataset](#tune-on-your-dataset).
+
+For more information about dataset preparation, also see the [prepare_dataset.md](./prepare_dataset.md) tutorial.
+
+## Running the finetuning
+
+```bash
+python finetune/full.py --checkpoint_dir checkpoints/tiiuae/falcon-7b
+```
+
+Finetuning the falcon-7b model requires at least 8 GPUs with ~40 GB memory each.
+
+You can speed up training by setting the `devices` variable in the script to utilize more GPUs if available.
+Depending on the available GPU memory, you can also tune the `micro_batch_size` parameter to utilize the GPU efficiently.
+
+This script will save checkpoints periodically to the `out_dir` directory. If you are finetuning different models or on your own dataset, you can specify an output directory with your preferred name:
+
+```bash
+python finetune/full.py --out_dir out/full/my-model-finetuned
+```
+
+If your GPU does not support `bfloat16`, you can pass the `--precision 32-true` argument.
+For instance, to fine-tune on MPS (the GPU on modern Macs), you can run
+
+```bash
+python finetune/full.py --out_dir out/full/my-model-finetuned --precision 32-true
+```
+
+Note that `mps` as the accelerator will be picked up automatically by Fabric when running on a modern Mac.
+
+## Test the model
+
+You can test the finetuned model with your own instructions by running:
+
+```bash
+python generate/full.py \
+    --prompt "Recommend a movie to watch on the weekend." \
+    --checkpoint_dir checkpoints/stabilityai/stablelm-base-alpha-3b
+```
+
+Output:
+
+```text
+A good movie to watch on the weekend would be The Lion King, since it's a classic family film that everyone can enjoy...
+```
+
+If your GPU supports `bfloat16`, the script will automatically use it.
+
+## Tune on your dataset
+
+With only a few modifications, you can prepare and train on your own instruction dataset.
+
+1. Create a json file in which each row holds one instruction-response pair.
+   A row has an entry for 'instruction', 'input', and 'output', where 'input' is optional an can be
+   the empty string if the instruction doesn't require a context. Below is an example json file:
+
+    ```text
+    [
+        {
+            "instruction": "Arrange the given numbers in ascending order.",
+            "input": "2, 4, 0, 8, 3",
+            "output": "0, 2, 3, 4, 8"
+        },
+        ...
+    ]
+    ```
+
+2. Make a copy of `scripts/prepare_alpaca.py` and name it what you want:
+
+    ```bash
+    cp scripts/prepare_alpaca.py scripts/prepare_mydata.py
+    ```
+
+3. Modify `scripts/prepare_mydata.py` to read the json data file.
+4. Run the script to generate the preprocessed, tokenized train-val split:
+
+    ```bash
+    python scripts/prepare_mydata.py --destination_path data/mydata/
+    ```
+
+5. Run `finetune/full.py` by passing in the location of your data (and optionally other parameters):
+
+    ```bash
+    python finetune/full.py \
+        --data_dir data/mydata/ \
+        --checkpoint_dir checkpoints/tiiuae/falcon-7b \
+        --out_dir data/mydata-finetuned
+    ```
+        !	      U      /7      ¿I      !\      ﬂc      ∆≠      ˜±      fπ      tæ      p∆      ˚      ¬     %     V-     q3     ∞7     ∑;     ¶@     |Y     ~a     œi     Ár     √{     [ú     Ë™     É =ﬂ1«ºˆvé;úæ+∫„…∫<›Ωx?%ªW÷pΩB´=7"Óºı£gΩ»g;Óƒe=“¡o;fªΩ“†Ω›íJº&EíºR⁄¬º„™æ˚ûs<ï&ùΩc^ºÍZΩ≈tÆ<˜Ìª<™π©ª*Ÿ⁄<oF*<mÌûºFóºÓ—<i«^ºäWº?__=ëEÅºk)œºÃF4ºœÛQªtdàºˇúÖªø◊Y=ƒgiπ’ˇ√<|ÊAº”ï8Ωöı;ƒë6Ω}˛ªwâ=_–Äº"¡<‰˝ªh$≤<∂OA=OıºÚ«=Ÿ⁄Q;èpMΩäS⁄<§ˇ÷º
+öÉº∑¥∫˘ùóª£˛<üØFºªI%=xãàº8ÔΩ0SÒº∆ï,Ω≠i0ΩûÖ°<c9ºÈ èºA=⁄_u<NÍ:‘¿–<J‘Ó<i!Ω^Øº<»Ωj0	Ω∆Á¶=Åë°<zdèº>mŒ<}6ºs+SºéUº»/Z=∂ΩÛ¯¨ªıSªm“Ωy{‡;Gˆ =Öº1)<C±æÜ'=I[õΩM!∏ª;ï_ªJ5<vGX<–∂;›2=œhΩ`]&=G≈=n‡
+Ω≠Îº2ç5ºÖ>úΩ&…Â<zvÌºUâ:ƒ∫<°7G=–7–π@miΩ†∫ºÍ9∆;é≠ΩûÔº F$Ω?P∆ºõÅ#<0»ÄΩ˘T!ΩxI8<∑
+Ωb~ΩS,\º>à=Ê‚<®—º
+´=£M˛ºΩ‹Ω~êΩ@BΩâÍ{ºä(—<‡x=¶[´;}Vº∆ú°ºôSΩÄ≥È<Æ“<õØÅºÕúäΩ|J< µÙ<~Æh=+XΩg@ºΩúi9ºÿ¶€ª@é–ªkW!=/òØ=®´gªJW=‹∫Ω%£¥<Ví=ÜöÖº{º|'Ω?"∞<ÛÁ€ºÛÚŒº’H=¸¬]=&†º›◊ˇ;
+‡í=¯„=D{º∑ﬂ,ΩuVﬁ<ˇ5Q<Ÿ–°;m8¯º+®<©nçΩC‡<πL¬<∏¶	Ω¥˘ºÒÄ=upiΩ◊<a<IoÆº"OÆ<î{ôº˝‘úºPÛΩØD$=Í ΩG'7ΩŸìsΩŸsºMßΩºÉªˇ∑Üª∞2∂º[ﬂ6ΩEfˇº•XE=\^=5=¬<<0E<_
+Yº/åº<rm`ª»Ù±ºæiÛºÖß-Ω´≥ÜºI¨:ÙàºÎúBº>–¡;42∫;üK‡º√ÃΩ
+~’ªrLºK¬ó;†Ω_∑çº÷ <}π+;ˆN<‘«:‹ˆõº>já<√å=∞ä<˙b=%$%=gf–<audΩuGΩŒ}¶ª±Ú4=ûF∫∞3+ΩC=ò9◊Ω¢"=~i¨º;≠éºb˛=º∞{â=Dª‡;UñeºXø<àÃ˘<zΩaÓª≈<HΩQ‡Ωîºê¨¨;=OCºX0zºŒ:2‹º√’*<ûE?=3óß∫J'p=Œß=ÉÅ(<¬òôªÅ€ºOµ<æ˛eΩﬁˇºÃsøº('ê<•9;π∏=Ïf=Åº´Yº>º*#=Ù@]ΩMåsºÓE=(Ø=›{ <– <bB,<ÉaÈºvÄüº[˜4º‘˘=∂qΩ¢€≠º◊æ=hN=3Æîº’]ÎºÒL3<.…#Ω^√‚ªª;ΩFº€;,$PΩ*Œá=lÊ<ª†«˚º]<´Œº)¸<Ï…=}!,ªÌÆ°ªT™?<Ë2<À‘ã<^óJΩúNT=√’ZΩs˘º˛{BºVpπ.1èºÚÕº )Ω<ßÃóª‹Ò“<ãÆΩÈé=Ä0m=‰˘ΩbGºÂzŸªÌ$◊ªVr!Ω·ÿ∞;≤è„;É9∑ºCá<~éº»≤<πÒÁº≈˘Jº∆ä¿;T 1=Ÿq≤ªÑAΩk+<–z»<$Ω=v0=€=ã<‡»æΩ-»=°iîπ&ÎUΩ*>‚º˘¶=}P=jZ†=Ωd9ºº°=ñÿºr?Ω˜P`ªî@Áª\Å7;Hâá<øPΩØ[=Cj<˙ º¯9º\–X<:@ª>iÏº$Ω8÷Ø<Pò=P∏Ω°È∑º—ñº∫´ºFÔêΩàìñº™™LΩÜ1<Îº≠ª<¬E=S“»<Ú≤Ω¶ìÀ<–:EºÕàúº<Ω9¶ªæé.ºLÃ‚<Ñ.QΩÃ∂ºHI8ªJ›´<ö}Z=e£ΩM1Ä<x®=CëºìuB<:ª =cDÁ;VY≈º€Ì=â?ü;π»<Q®Mº—√É<…W]ºë{d=u4ºnCîºêî<ocºy≥ª<,kΩtâ±<ÑÃ∫sœ†=‰Y\=bÿ\ºÍ‰mªtGnΩ˜Å=î±Ñ<=WΩPÑºŒÖSº/lH=SZhº–_◊ΩÄ\Ωk|Ã<0Ôπ<G-≈<sø<adå<Qñ=Cˆp;ﬂŒ;zÛ·º%Ω;Kñº]èå;“ø<§ΩÛ*§<ÔeªÍD‰ºFJ< I¨Ωã˘ûºÉî∞ºı		=„=,…K<KÕ˝<”wΩá~π<Oºîùºå±ÄΩëwºH5	Ωfc<˜úΩ¿Ú2<¡[îª|˛t<3W=ﬁP=¨[ß	≈´^ººÔÀ;õK∑ºæ;:ú6<¿ÉZ;¡◊•ªsYûº[Ã.=_„!=©<Ωπ—î∫ëÿΩ21¸<∂FU<,Ä<¸mIºΩÖ<û∂£º–À;aÙJº=)ΩvM:©©œº¨ÂR<∞ÒÊ:ïE.=`⁄,ΩjSº%/ª;é lª(»=âËº0∑äªªÂ9CóºV@Q=í=v^´ªj9=0P˛∫¬¡Ω…∞[=Öçú;%"="µ¥ªú„~<WﬂS=G =Skû∫~~<;|=uYh=†?)<VíB=$M·<;ú >eº‘=^g@=Œ ~<¢ﬁ<ªÊ’(=Åˇ‚ºC…◊;Øc:^A=èQè<?‰5;∞9C;≥ùDº	#BΩ¸aÃº5xΩÜ0F<5∫ÎºHí\=1Âõ<X=2Öw∫^ﬂ§<3„qª=≤A;ƒIÇ=ˆâﬁ<úàΩYIm=›u=tÌOºH≈Òª◊wC=ÂkC='GÏ<XÖ;ÌØ{ºôâﬂ:FZ	ΩÑ•&=…-ZªÍÎ<ÙŸ¬ª"¬Èª\*ﬂ;G∑åΩzâΩ2Ù`Ω(Àå<?Ÿ2=1 =∆ñ§∫âJå<—1<îFf=øﬁõ<?ƒÓ:6oΩŒfD;Ù ±<–Œ=ÜÍúΩe§Ω#ÜΩ,È#=ê¡<G[ZΩ G…º◊ﬂΩä€ºôÄ<ábÂºE¢/ºË"=õ}$=‘gºès=*j(ΩB`
+=Ù‹º¬˜Ω<wKöª5òˇºèïºÕ>u<ëÇΩ’>ªtéüª‡y;ÜVBº⁄A©ªr
+Ùª® (<jNN=∫	“º—º‚¥#8nàΩı¯°∫==øo <5˘=ª¥ºÑC=‰o<<|
+<˜¢=Ò˜ú<â^q<~ÔP=ÇOw<êa&<u
+c=ø4ÇΩÍ"ƒºßQ$;Õó=á~≥ºÁÉÎ<IW;=hõ5=X˛ΩAr£ºÖÏcΩY≠=ÌÃπ2‰ê<-ïT<˛„£ª∑Á≤<úèUΩgò<ªÓ`<†üÇ<UZdº+ÒÉΩ~∫-º2≤8ΩÊ° Ω{ÿû;dªow8ΩzÎ)Ω6„º_6Ω<ç1Ω}j¿;ûü%Ω¡“öºñΩÒºÔª§ºf| ΩLäã=s/Î<z¥íº\∑Ωï™º–'^Ω¶!=§ﬂ<–ß◊ºuÇ/ΩÌ[ºó~=2Â˛ª÷0I<≠≈<à≤r=ÖL*º2II=ƒêC<§y;<Œ´ºËñ=˚é’;{.ñΩUºﬁË<nÖO=6¥ë=á√,=fËòºë∏<À’;/O±<ä.Fºy›Úª9¿á∫nóºnº}ÊΩïõ<izÄ<f%ﬂº6ÛmΩ#¿<o˚ÅΩóòïΩ»'=©LÃº∑Îº® =ÃÛÿº·§æ<ûË=zœÌ<2åc=»<˜3=(¿æº˛èΩuDf=∆Sºπn)Ωª?Ù;8á¶ºÉŒrº,CËº uºï¬n=ÇIœº»≥1º8úÅΩíÈè=∆+∆º<MÉºﬁaıº)Á/=(˚xΩ…Tº◊!-Ω†|ò:D˜ºôËã;¬¶˙Ω¢Ø•ºT^ΩÎÈº˜a1Ω?õ/<I ©<ç√®º™œWº ô<ÓÜù;_h”ººKé=î:’(<Æ≠a=˘√~ªØƒÉ<S“ªâ!yΩGo•ºi†∂;ô=Ò
+ΩC<Ú®Ωô?ΩÄﬁºÿ∫Ω§¥|<Œ9<∫˚˙ºŸ<ü§ë<ÚŸ¡º;+=^øm;9b=	‡&ΩJ›Oº®Ûﬂ<&1<æ«º≤CÆª\Q=Ä•∫ƒ9º¯=é(˘<Â
+≈<ΩlwºÛÅΩ}w/Ω#≈=â˛9ΩÛsºç#·<Jp„<à|ç;àlÜΩá±¶;	æUº”˛=L™q<>ﬁ≠<—4;=™v˛ªv	ªóNB;ÙBv<ƒÃˇº4¿<øΩ/=hÉΩ/l=#
+=òAΩ˘æù<Gı=¨‘ƒ<–·<ÃΩ≠Ω#=ÈzÄΩS;c=ì&h∫5P®<@Y=í[ﬂ<Ú©º’ãºDÒÿ<êµ=ïG¨ºKù{º‚6º_µ Ω	FªBŒ;ΩéwΩ›n≥=såu=àÍQ;]VºgÜ<ı9u<¶¡&Ω6‰<=»Œº‹Ê%:Eò∏9Ö“nΩyuáºmËÑ:OöÇΩπ˛Ω1Ïº”[=¡»”<ﬂ:§;âr´=D≈?ºƒÊº˝äRΩˇ©º£Rº˜ ·:Œ„\=⁄•Ÿ<ãq¥;2uÃº€eºÒ¬==n=.à<:pÜΩ¶ıŸ<ı_é=b<Ä=ï⁄^<zJæõœŒºXÓùº.d<¡I<™kñ=FÃª@Ì:Ω≈Ëªa!eº`@ò=}ÜºBõ8Ω 0Ê;NõÒº¿ÛΩ’P<Gö<Ãÿ=“X√;•ıªõzp=;5ø<6J[=µúªD–⁄:f î<°∞ÈªªÙ±<ÚlN;|⁄,Ω*3º&∏±ª´¸4ΩÂèΩÄ˝>=iäNΩ•=>ûØªü¨Ω˝ÎöºŸ@ª[˛SΩÂƒK=,(πº·›˝ª †3Ω=$•;ˆFÇΩ©˙4=m^ˇªˆÕã<Cê+<ù0ˇªˇû=ñw5=IΩ{ì€<_a˙<±ƒº∑à=}ÇËº∂ºtΩºÒ2Ωä õ<Ëö€ºRZFΩ˘@;ÀÂ.Ω -Æº¸⁄3ΩÕ∫FΩKüΩÓŒû<∂·ºUÛº@B∫í…æ<üZ<8F<j¢ΩÖ9<h„⁄<0Ω~ªöø¨<œˆª=~¿ªl[Ωebº¬ñº1<]ˆs=˙c±Ω◊ë=„JkΩ`’|=z√3<—ûXΩö;¬ª∑ü.Ωénº$ΩÙ?<OïX=ÔPYΩXhÏ<FOΩ ¢∫∞qÕºÙÍ=>/@<’HΩ3∆ßº—≈{º_sµ<ø^wπâÅº´º<ÑÅ=eËù:ªÅ¶<œ¥≥;ı•1<ÑïΩsπC∫©<[ÊÒª>º—º{ÆP=7ª<'Ã$º£∆&=Ÿ9§<k[Ï<2–OΩ2ä§<] ˇ;û©=cT=ƒÀ<kﬂΩ∑I<Ë"¶ºÑ	_Ωﬂ(=}ª1ΩﬁÚÒ;é?=X˙\<q 6<*$öº›1Fª7˜GΩ’K0<brìªÒá∞ºª5ëº!>'=œ,
+º~©RΩo≤-<†◊C<RS)=ˇUñ<„∑˝;´4"ºæñC<àc_ΩıÕÿ<b<ΩU~Ÿ<|
+{º5|U;t“ÿ;Ωé<◊àyº©c%ΩÖ™Ÿ∫‹üª<Y™é<†¬Ω!˙<O¶8=ÂP1Ω∫Ù>:{f<s‹=D.Ω»‰‘º`ÊΩqπ£Ωâ/=¢¡ßºÉ„ºeJºAv%ΩÇïq<¿∫G=Å~=êk8<2û¬ºπ€<8g"=Ççµ<0å<£LÒ;QáΩZo^=∂3ºm˙<}ó!ºNö-<å¨ ºªØ=)r•<@€<ÖΩÎg˘<qçﬂ<	≤sº#Ä <ﬁÈÎ:FÈlΩ‹»<[ãiΩ3ÁU=	‘Ò<‹bºÇO"=w¸·:=ºS∑$ºÓ˘≠=˘æÄΩM”±:w]PΩŸªÇª8cΩ[=Ìœ`Ωyóm<¥Áêª@¨\<∫¥=◊ö(ªpÂÅºl»<ƒ_G< Ω†8UΩFE0ΩíJí<’„ÑºNá¨ºá∞∑ºS2ıºEÏ"=§Ùù=0¬≠º—â<Ííç=ß¿âºLgº¯—•<ıòäΩ,√uºiá,º8J7Ω8‹=Å“ò:~≈µª‹æ<f’Q=SÈÚªÏÉRΩhﬂ†<g◊<L£êºåÅ`ΩêIºà∏ŒªNèÉ= =ãu"Ωíú≥ΩÓWàΩÒ⁄ì=Õºªë∂¢º˛æwΩ¿=¬\=†@ôºeøΩõΩΩ’û<åøÜ=∞œ<Ê”≠;µ≠π<J™=(0=§Bº6kΩ&€≈:@y0=√±Iºg—<9éUΩ/Ωª3UΩ—öàº{‰<oâ<ΩU@?<*'<˙ÒÇ= °º≥€p=à=j˝ñ;ùá;=ﬁµΩ’SÖ<ßΩji’º@q¢ºÃI£<∞8 ;G>Ø<∫XΩpyΩju=*≠∆<àµñ	6|∑;?[7=_ˇ\π3ˇ6Ω‹Ω”<éó<;LΩ‘pxºn=Vë=<àΩ!HΩB¥JΩÜX=1™;∞4ó9”¨=ÉﬂG=ä≠Ÿ∫ÿ÷ƒºo◊sΩﬂ^EΩﬁÊµº P[ªπºÄ¯ªm‘h=ç´ºƒr<€˚ø∫{üΩ∫œÜ1=>Ê´;0†º¥$áºÈQΩ€Õı<›rZ:ò¸QºO«÷<=ëJº«G¨Ωµ¿4=÷ÙΩvu=ˇÇ<≥∞<ˇòî<á∑ =ûºB·º ÕÔ<Q€Ê;∞b= ö£=¨z`< ü—=Î€Ω£À,=»≥Å=ûì#ª%•;>4ﬂ<YìΩ∆sΩ|ÿª¶“<Âm†º≥3=35å∫…(Âº⁄*ïΩ–Ÿ<…Ï
+º¢¶ΩΩﬁvá=ÜB=¨‰/=?E¨;”,ë=afèº.¿àºa==Êö<ÉZ»ªA8É<êNä=èœΩœrèºV[Ôºl
+=:Ww=…ê±:LŸfºÁºüÛº⁄01ºT˜—<å£ƒºYHΩ≥8Ω≠g”<˚óΩè&UΩ»VÅΩ-˚;=rÁ<Ä#=Ëóâº!a–;àã∞ºJch=`n©=∆ΩDˇº6å¢<xßªélü=›vÓΩÕt™;¿;ﬂºµw<‘Tªºãº÷2‹ºE`^Ω∑(‚;Rˆ‹;ú«0Ω)™¥<ï=+yHºX“º{
+å=éL¬º”–É<¬∂<'(=∑‚	Ωˇãª#îíΩÅkº˙%Ωq=ñÜ=$FΩoêa<uòÍº÷î<ÅV<;˝ÒÆ;ÈΩ<9ûªº≤ü›9` ΩD[¨<ÄÄº¢ø=â5=Î*ºæ!…<ƒú9·H¥<5Ë;nó <¯#ï<ƒOˇºøû%∫Ø:Ωº‰g=4„?Ω¡ø∫<õ»<=.I+;›\;ä¶=,.ñ<B	UΩˇ–ÆΩòP
+ΩÕE‡;ÆÉëºcH==~|º'5G<∑≈&ªá=öº †1ºc–;6õﬂº06ÔºS®-ΩÊ+ΩB¨éºˇ kΩc4=ÊÀªÁªàº<Y.Ω/Ñ∫h Ωp´1ΩoæL=xqΩ˝‹'Ωˆ¥_∫`·"<2 ΩÈ}Ï<ú”∞ªFëΩ–±<+4Ωar∏ºt:˜YªLNΩ!…<^¡É=öŒf<¨{ü;}w=ıí»ªlœ<„ÊÖºk_z<2Zº<}ùº	„ ΩÉ⁄=fœƒº˚c^Ω«’◊<c}f<œ¶=ãMi=(CΩWe¬:Ïøê<∞∫∏<‘q¸<æı,<ˇ‘cº4˙πºŸ º‘U'<ÂÑ;ü<í”;=ƒGrΩQ¥£ΩeTˇ<mcbΩœ⁄ÇΩÜäÉ<Ea/=ÿΩûo<=∆˛?<ªù<`éC=bt<úÆ¢<HÙªxlò;˚æ9kj$Ω§Óˇ<Ä∑cºw£y∫SN∑ªüª<ß∫#Ω¸=peï<Ø0N<ÅÊÈ<bS≈ºs‰õº[©‹<+oº~—<`aæº‡k<L…Ç<ﬂ:√ºÏfΩ-…ı:'<=Iÿ<çï•Ω€;ÿ;dÉΩÀ–Ëº7•sΩSº«ïº7Fﬂ<~7Õºÿ∂Tº}`HΩb2Ω,t≥ºH´º÷D=ò÷=À.à<ªï!;€<äº◊„Ω6k…ª‘à‘=äJ(=M¸∏<Ì∫ÿ<Q9ë;éÀªºfºËH<ê7=Û89ø%π∏kaÑ<˚ﬂ@Ω˚í÷<˙û<=®{Ã:X¡"º@Œºç¶cΩM¥=cÈΩaıº†∂“;^î.ΩÑtñ<Ã^IªÇ5ÓªÄÈÀ<%<4ºÁ§NΩL,≠ºDa;<)ôºôsÅ;/6$;Qc\º$l∞ºX:ÿö1Ω&⁄'<ÚÆmΩ˘ …<Î∞ªﬂ≈Ω»—3=—ÕΩî≤˙º˙+`<.‹⁄<y©j<]É=òÜ=R÷ÆΩj˙7;R£n=Ö#hΩÅÑˆº•±=„LΩ™†£<¯;ºıê¥<µ¬¨ºﬂ50<Œ°∫;uO=!Xéª∑Uè<“Ù	=.Ωì<-∫Åªõ€<>VΩÈµáºg∑&ΩEXüΩïf†ºçgõº’k/Ω?˝q=•zR=Ø¿=sê=ò#Ω·,pªê¨%ºîΩVÍΩÕ/l:¬-Î< ñI;^õºVyk<òˆöΩ…Ã[ΩπBUº<‘p<íçôº4Ç-=@kØ=º†â<£pΩ°z=*7∞ºÍõ;pÓª±Öc=é4<}( ;{‡Àºù”"<øßÇ;€=b;=|9Ω˘CÎºjG¬<èˆÛº:©uΩ›}dΩ›-<J2=›Æãª>E;À=ö Ω§ﬁΩÎ’’<’'Ïºb´=§äÃ<«5Ω§∑CºµΩ~Ωà˛˙ª{ó…º:A°=R¯÷ºÃ<ªå@D=9Ök=jˇíº‰2i<’î{=ßºÔùõº√ºœy3=ÄÍúΩL^=˜é·º∞/`ΩqòÒª)=R›©Ωñ<Ûèâ<¿R=∏<â•Zªpa
+æ Öô<yIΩ¥Ë¬<#ﬁtΩ’(=˜e6ºT^x:∂‹Ω¥€§<ô{Zº¯∑Z;£V =C(Ñ<m¿)Ωß·=\ªΩËÈ <@/(ΩÊ¶∂<®*ñΩ≥∞º|lΩ8Ô^=ƒA]Ωı5ª6Q<k¨Tº(≈¿ΩΩ¬L<EÄŒ<–qË<\âÑΩJ@Bº◊æ:Ωø—ôº”8û;ã9<ê?]=RÄΩJ∫l=ç1ñºì<¨¯Ø=[5=QΩyg¥ΩÒË;¸5=‚ö<ﬂ10ΩCÓ=7Ä-ΩP€)=üΩièp<nØâΩ∫M'=◊}˜ª{∆ÚªP≤=‚*§<ƒ…<‹Ô}<¡Û…º†) Ωç¢sºÿ˝©<˙	:T]/;÷âC<D˛(Ω’∆Ó<\œÜ=‡ΩÎÚ<ÈÜºiÖ<ÔÑ€;å(=ì)^ΩÀl@ΩäﬁUº”Y†<õ^s;aJÀº4ûxºwÜÌ<M¡Œº√—J<yÏ <HÛ=îÅºØEœ<ÕM,=:jB=3ºA=±Ø±=ˆÍú∫}Áä=å4Ω≠ıÖ<Í©º-U:=£4À<÷÷<∫∆Ωháˆºœ%y=∆ﬁêΩëã<‚˚)ΩbF_Ω"!Ôªff=*∆<ß&A<< <7ä=Õ˜j=√†;Y4–<ä◊Ø<tS=‡ú º_nÏº∑Ò Ω#ó=èIøΩ’RΩê¡’ªÆd™<—›tºË· º˛T<5”<>’„<I¯ÄΩ ¸F<#œüº ì[ºÆì:ºÏ™ªÖ5=ÁZQºï¿&=!2/=ºVgΩJÇ<mêÿ<ª=-=@º:ΩenlΩ/˜UºÀx¿<4˘Ωª‚Ïº.ªó=∞h=€ÑªçÛA<&ªÈ=q}=dOΩ~ï6<øﬁ∏ºî‡ΩPq9Ω8ì‚ºë´à=‹\I<.=i¬<óQÜºwÔbΩb£ª*6~ºá≥'<»´=/˜çΩXÆq<∑ıQΩá–/º[S
+ºLV§Ω¢"›º)	ºp&3ΩqìNºÀÆ=˜ÈΩoëƒºæ/ºòxç∫Ó£ÇΩòüCºFB^ΩÄÄ:N®Êº81=VÂ[=È•<ÿ{©Ω
+ûò<≥1Ω-€,ΩU∏Û;)E´º¥[!=É∫öºÕãº}+ª/.–∏Os¨º¢Ôêº[÷äº`[:¶≤î<%é"ΩIñ∫'’q=j¶3ºΩèΩ¡à∏9ã°‰ª‡;à;QRºÛµª'’ºIõ<îüÔ∫"JΩDÌΩ∞=$+W<Á9{º*6=˚mã<≠·<¿¿•<so=)ßê<*âΩZ‹Ô<]‚Ã<XÒ≤ª¶âíΩp°,ΩÕﬂQ;P¶=ƒk„Ω"1Ωüd;»QΩb€[;ìC=ﬁÏ=”_Bª∏<≠ª”<˙q¯º‚ˇ;4z≥<°`&<©WJºl&Àºøä<N¥ºÔÿÖΩÔÕÄºx5ΩÀ tºO»rº^º3¨R<≤G=,}ΩË¢º¸€∏‘å<<Â=
+ÓΩD‚ºÃéªﬂ0I<m 
+º‚<úRä<(ì∞<T˝]ª≠?=◊®§	ÉC¨ºƒ=Å=‚	õº0eçº’º=û-Õº(i·∏≥I∏º¥@û<=N*Ω≈≥€<*Åº ∏{Ωf;º“C<7ê÷<PõµΩöΩ¯Û
+Ω;ZªÿΩkòº;`bº}õº‡ızº™8«º`só<èbºòCòº3Mé;ˆ∞M∫ƒ`<Ïw–<=jﬁºÊ :«q3<BR.=7™:|Oß;Å$r=Öï¡<ëKΩ•Ûß< ””º`›·<¥R?<U=1S2=‘é8;]=‡L Ω8h?=π}"=¿3ºƒ˘!=Ù|j=é[£=°ä÷:Î∑=”€n=Ô÷=œâªd°<ûÛ˙ºµ±LΩ}S0Ωß¡NªT«l=≠Äπº–ªﬂµºÛÖÃ;/ËÚºj>Ω
+7c=  Ω¯?;Ø±=ÁëO=ñsÏºßÒ–;E˙t:◊¥r<hV#=	⁄=#XóΩ2⁄=|ïÜ=åÑÜ<Â¡$<ªIº›\ò=â®=e™Ä;¬Ü¥<k(sº¶<˜ë°<+˘<Ï¯R<˙„È<˘Î:íı°ªvΩ»ò´Ω€∫Ω ë;…◊=Zjh;];*3
+<ÕÛEº¬B»<>@K;¢Ω<AgΩY?==◊-ªw7˛=[irΩèKí;⁄(åΩ7eÚ<Sh%=ö∞ùºe≤uº9ıoΩ˝Î:G2ä=ß#ïΩè^≠<È¸<1°g<B›‹;1æåª%fBº.n
+ª	≈Nº≈¶ºº»ΩÎ0;\c(ºKvÒª‚º"¢ªc•—;¬∫;;®á=GÃΩQX+ºÑës=aô<ΩKº˙&/=ß¨;_J¶ºåÀé=öîW<ÛÑP<àhΩ¶ú=∞f&Ωé=«z,;	!+º∑œ¢<Ï5Hº-?á=#ä¸ºTÅ¬<OË˝º˝≠=Ω±ïˇ<ˆÙΩı7õº~Qß=ÿ&c=À	¯<ÕxÍ:[ÆÄ;ô9bº8V!=h£<˙D\;{Yû<Ò.hΩüºÊπkºì*ΩØú^º”ãâ<˜Æ-∫∂≠Ω‹--Ω	aΩXø©;ù√7ºmYE<<º¨Vºx⁄·<¨T&Ω«ûº}IS=">º	ÿ⁄º—ª”º¥`ÁºÔÏ¥º…OX=Z@=£˝jΩ√˙+º’IΩu”vªs‹;£l∫<∂tΩÿ å<e—Ñ∫òó◊;≈8©;Á≥5<e¿ëºÚƒŸºÕØÜ<?!m= ‚;_÷<U;=Y»<O6Ω«b•;√}UΩa8Ä<V!C=^IpºõØ<T—Ì;€˜=ñ‰˝ª;=Ç‘Ú:ƒORΩSΩÇ·¨ºO÷1ºÿºcf‡<®¸ﬂºQÊΩ‹"ΩÚ@ﬁº:ÚÖΩ)LçºZùªvnQΩ  AΩº"=¡FGΩıw\= FÍ<(^v<»|J=.êt∫.==Ë|;√Ä]Ω=N2x<û√°ºÔ›`=MŸ—<Ä±uΩ¬^(<\£Qº?¯ó=¬˛ôª~d)º«éÒπg≤ºAÅΩ0ÃÏ<ùTÜ=∞”´=“ïnΩpv0Ω æΩÄ.î<éÛdΩΩ#˝;∫‡HΩM\=—SΩ]YÿºÓºΩ√™DΩ„éºï’<“kº?…ª_À;˜Ÿ<Ó–[=°ñ¸ºƒ4›<eõG=nsÛº.>S;ONºõ®ÔºâúÎªÊm8=ÈÈ˘<v}gºIl=Â}∫ßÿ)ºˆsºÿ	åΩ(ƒ;l8=©£Ïª4XªP∂˜;+ôºâ˝Œ=äsáΩπƒ	=Ñ	Ω–rª*/2=´éº®\ºSìÑ<vq<#µÜ<VÅçºXÆ<!í=æ^…<–ÆàΩ‰_*9%Õîª}P⁄;⁄W√<j\è=(≤Vº%œfª$ T=÷|Õ<@é•<Ï:–º–4=Ä	Ω£Ÿº	”g=∏QΩãt|Ω·Ø=⁄í<$fΩ¥ <πOA=n’ªΩ™˚=Ú$•<ABïΩ#5ºão=ÌS¨ºﬂºp,ÇΩZSÌ<`ßº¿ÑßºˆœùºÙˇ©=œGº¨Ûª»D8=»‚;OÂ<0X¡<Œ¡c<öa¡ºÆ˙•=tdºüÏﬂ<?Z<d¿ªò∂¶ºÿi˚<≥WÈºÕ∏\ΩßÁ6ºE¿<Ñ¸{ΩÛ!Íºì¬éΩ≈}›ºXC‚;œªΩNQuΩ‚â.=õi©ª)êΩì	8Ω3nºó˜ì<
+√ªùÄº2ëΩ‰ZΩ≠HãºPQQªÁKØ;!e˝<5Ä=)£—ºî¢g<ê[Œ<!m˝∫ıŒ¸ºfnØ=€ØΩfûº?Ω`<=DØ%=‹ÇºŸuΩá<È∆;˝kˇª¥å∫<	ü;<©∑ºÜÇ∫hgΩEKÉ∫Gz=¥3Ω+ÇΩî!Ùºû=bCÇΩ4õ2Ωå˙=›+<;ú8ªÍ¬ï<ˇY=Íê5=ŒÚIªˆù]Ωì¿Ë<1ˆ=boºà∫¬<Õo’ºf$;Ω7≥<∑2ΩUÿº}ØÍºòfÉ=T’FºËë&=¥ë<
+,º√.ñ<BÛâ<FÆÊºKé∞<Õ/Ω∞ì =†¢OΩ\Ò®<¡ÇΩŸ¡Ω∏¡º•
+2<jõº¡_&Ω	¢<_wJ=˘^ì=ç^â:H›∫•¶•<Ï61;@Ωº6–ÇΩ2πëºëﬁ’º“Ö;ŸπjΩ∫=≤Ò“º%Oºu®<Ω≠Ú=À1	=ZWΩ¿µá:)[°ºu—=ˇΩ`¸M<É'=Ï–7:)º><¿Is='Ñ]<nbL=›cM=œ⁄V;œÛºyœΩM…∫VÈ;‘íºπ´|º
+ì=µΩà˝ñºÚG∆º‰æºQkˇºÑ|$=w™º°”√<é9F=˛O=.ªrº˚¢ÇºS êºâQ∫;8Ù:"s˛<Ô/Ö<~˚Ú;yÜΩÀù+Ω—9=åêø<≠œ<q	=ªóÑΩ—ÏŸ<Ì◊ºâ=O Ω'oíΩÛ	ΩôE<yX<Kd—ªëÙ]=≥ˇ¿<+SùºÇèã<≈∆®<¿b5<ZÆ‡ªaÂ,=%ˇI=M3„º –º ô	=¢^á<«O´:Æ(º¥WtΩúï<ºXº≠t±=e =Ru
+= ≤<lô›º™„’<Û
+OΩ≤m=0 ¶ºO∏ºÀª8Ωÿì´=mìªºúÆ®º@π; o;1ü=˙?‘<O=<¸w"=víiΩØ◊"ºG¨áΩo=ª|@'=ìÈ<∆ªn€<…¥=°I<v;å<◊ÿ/=¢2ΩΩÒúΩ ”Å<àXu=ræ:ªíΩ∞yå<RûΩ	éºØØ?=ΩÛ<·å;tÏ<bØªñb†<Îjº^GFΩ˛lÍ<»–=÷≥{=Á‡$ΩOb(=&&+=Õ≥=-Èw<ôˇ∞=&)=…ä÷ºw—¨ºhô<äû8ΩÀâ-Ω˘<Â)¬∫ñQ∞=Eç¿ªä«òº±≠Âº1ÖHΩFÌ∂<áäºÌ:ºfw•;9:îΩÍí<e4Ω≥,º5âúΩÖüΩ7⁄=ÓZ«º»éçª¶ =∏V›<5’¨ºÀµΩΩoÌºˆ3JΩ⁄®∑Ωàï†Ω¸kgºEûò<ˆeÖΩ](1=m¬!=Óœ∫W%ΩPxΩ<"?-ΩF©◊<πö==Õ}ú<Íp#Ω*È<ÈFºÃúv∫œ*º0‰Ö=…ıì=íXg<j†¬ªü
+Å<›í‘<›»ªÓP1=oªﬂªì
+Ùº“pπºHÏΩ∫Âç=√8~º/¸uºÖáx<ÙX„;fDºﬁ%‹ºaØ¸º≥`©<≈õ;<>ΩÊqé:o›ΩK6á=k#K=∆Éô<ƒΩu´üΩé7ó<†Öå<}ÈoΩI≥kºç¶<√tì;∂ ΩhÂº+∂AΩ[˙ª O'ªöC‡ªcÅ<IØS<‰;Âªø-=h∂í<˝±ÀºÇÑ!;=–ª«§∏∆Nxºöñ*Ω+“O<òo∏<Å√ûºK©:P?%Ω∏(ì∫Xã	ºÛãÍ;∏=FËlΩP3=3ù`ΩpÌΩÿ"I=pÎª:G≤;pƒFΩ1êk<≥P∞<G¡õΩt<O<§<¢w=pË¶9∑Ö=≤™é	f¢πΩ˙¨[=.u=Äh6ΩhY=ÍP/ºã˙«º⁄»≤º‹ºw<A⁄=€†çΩ3›º¸"≠Ω)<î4àºÈ;¯Bº wxΩo7’º5∆=ÄO?ΩØ\±;PÖ˙;Aå#ºÓAºqØp=ffñ=∂◊ºèo;-<?Àßº≠¸ö<Èê€ºítº:Ø·º≠¥;Ω†fK=ƒ∂b<·Ñ<ôG=[òΩºíôjΩ∞ú¯<ıÌ4;±
+Ωë†©º&€ºxÀ:=ÿ+È<J1=”ª;êÖ;|ló=≤.Ω±(Œ<Zxı;XÎb='©æ<sÇm=ıP=kKÁº¥´(<ioó;æ√#Ωé˙“<j√≥º;Ù=*><z=ü–;√‰ΩﬂΩMΩB¬ù<òÅ`ΩûªJ ΩH≈z=≈»U<ãÚä=aµ®<s=!…´<£NoΩ	\<˜›ı<»”	ΩäOä<—å∂=Ã∆ã;≥iHºÂf=n3öªso!=Üq¨:ÈY¸∫jX<(}EΩç
+‹ºH¶¢<ŸX	=[´Ω•/Ωâ£<kR¬º ?âΩ!L6ΩaúHºV"=1ñ=]ó]ΩajΩ∑WMºcQ∫<˚] =ÿµ∏∫é‡tΩ˘m¶;R∑ô<Ö=AıZΩÔ≠çºç~º%bÊ<)%=µù¿ºRçΩ0ŸDΩˇùΩ∑∆\<	Œ¥ª≤!iºaMŒ<5DX=ƒ‹\ºΩEÜºèÊAºÖ‘=Ø∞g<†}‘;a`<˝]Åª˝ﬁ&Ω¡R≠;ı[›º±”KºÔŸú<‘Â˛º"ãGΩn3ä<c˙=ÃQb=ÏT=xgXº`^TΩﬁ}›<ö‘ﬂºáZ†<ZÓ<À&FΩ¥Ä=Äê:´Hí=[ıîº
+	º·‘E=‰+<¶ˆk=_` <ÖÇ =≥8ºmå{=è∆?Ωu<Ü¬F=Ö≤#=˜lº ã=”=˜≠ç<~º:(|€<@$ΩY⁄<ÒÀÖ;†(	; ¢–ºùº™Ã;k√”<ötË;d|Äºˆ∞√<öü≠ºÿÑlΩ4 I<¯ö™ºOéº«ºßñºÚ@ΩjöÉΩscD=äjΩ,iπ>¶];	EªYƒÎºÂÙ°º 3Ω4º{E=l‚óº≈ûéΩìÉº‹ÿÆºYÜ?Ωc¢8=ñó,º™ä¸ªŒätº≈Î¯ºèw¿=Û”ΩL∂¢=£µôºåiöº†<ºÅnl<…Ó.;E¥±∫ÎKΩßÚ'ªÙîí=˙Á•;πD-Ω◊L•ª_.V=9ã=TX¬∫3W=Û©ºnﬂ ;⁄Ì<`so=Û_âº†¥<ÎÎë<NSΩÛºW3;=Ω∑∆º¥[âº¶π><Ë+VΩ`ÆΩn–éΩâÇåº•˝ú<eÕºÁ≠¢=ŸaºÌ™k;n
+rº_T=äXœ;ú©L<≤P;ÂWΩ˛
+Ω+;=Ÿº§ΩËÌºhwV<#≥;f1Ω:áºv‹Äº™ñ8=Ã^ºQEeºﬂ\-ΩÚ
+=èÌaΩ_HQ=ï∑›º≤e¶<ö2I∫≥b7ΩÙºÔ<ÄóÃΩ√.a:ª⁄’Ω¢_¸<{`<~Î'Ω®µº7VΩúÁ =˜˜Õ<˝÷ΩÆ»<B<ÆRßΩ≥ßé<rwΩã>>=T\Ÿ<…A‰;µÚP=]a{ºÆ‰YΩ¯lR<4,5=·;Í<9©DΩDTù<I…˙ª‘?ùºßiº≥f¢Ωoﬁ<‡Å=:Xà;ÈR…<"ºÍ¡Ù;z„Ü=˚ÇmΩ,Âˇ<∫;.ΩÉñm<rrÌ;‹1‰<'ÿ<¢Ëí<	–áºñæ=ÖΩºHá8:$u=eS&=_m≠ΩÅ6ïΩ≥ß<¢¨_<<jªcêò<Ω?ΩªØ=7Ô3=†Ä¨ºëI9<;
+∏º?ﬂ¢ºNE!ª<ºÀºç=B¬º^x”ºCŸê<N(
+=s{Sª√ºz~|=ÙIΩ?EΩ…ﬁ%=å'Ωë!7:¡¿û=sÃºP%.Ω˙(ÕΩˇl*=mp—ªOÊª›hΩ¯Åm=œ©ªÿ9R:√ °<ÍeJº¨—Ç<ij=ø'Lºé~Ω@®&=#◊åº—8™<=â;n4áº„ÌÜ;˜n√<ä6ãº87º.æƒ<iE‚∫∆ª^Ω≠éì;ﬁÓŸº+owºc =hÚ&Ω∆P∫Ωº»#<Ω	KΩ_¢#<ûrü=±≠÷9€=îQ=Ç•øºSŸÿªÀîΩYÁäΩCr6<ÂÇô<¥˙¯< J?ºÓáº<sE<wÛœº≠‹È;}Ó=€øºõ
+-Ω˜Ëä<•å©<›•<∑t˚<Ì∫ΩoCº}ûZªùkP=ª◊Ω∏?Ö=-+FΩÎò‡<“!ª√à'<Cm=ôEÑ<m¿ºëzèº•nÊ<ƒ>•Ω¨Ô8º∆4<MW=„2;°÷<⁄µ=ˇ∑œ<#áîºQ±<
+T=Öÿ%=+ÜºÙ›õº·(D=f¥æΩÃ¿E=]·tºÒ∑ÒºrÎ®º•Ï¥=A‰≥Ω∫¯å=í»V<∞Á≈ºYx¶;@™üºç Ëº	=˜MÆºú∫;=ÔåΩ°øÂ;r!ûΩÏ>Q<<Ω˛ú®;‡Ø=(˚F<¥MB=≈∏,=ù[1ºSıÉ<dŸºÇè
+={'æ9°≥A<é»XºnfΩ%[°:>I`=K≤ª8úª±ÆΩ¶›‰ºŸ„Ω—'Ëº7—„ºÌrÿº\ÉÃ∫˝≥óº)§ºN^âº:ñÇ<çˆ
+=C =œ≠É;ù«≤<ëJ;=¯†WºxU=v?Ü=OOíº<æD»ìº‘-ºn·œ<AÜ†=éΩΩçÇû<®1eΩ6rG=ﬁÔ	=£≠ìΩoVΩTWº∑ßå;èä<|ö=ÿº=Sióªu÷ˇ<í¸œ<˚°YΩ%Ω@∑õº¢*1Ωœ-ÂªÑ¥9ÑŒº…SÒ<˝…∏<b¿@ΩålH=i˜<ƒ.e;±µbº^2#= ≥8j∏ΩüàB=F˙%ΩäÔ»πFVΩÙ‚2=ÎO<=,®XΩäÙ¸<û<;s¬=ºO	ΩÒI6=ó<=^&<VÜ<hÌS=:<Õk≤;{DãºgFª—*=3´Ω9f<g≥<ì	º†æπ<se”º,⁄UΩ»c,ΩÙ«á<©ÂBΩ±tΩÿΩF¶ì=»º{„Ω!ô£<¬‹¸;p”%=J=µ`=î(Õ<≠Ÿ™ªP•$Ωtmº¨jÊº¸ñ=´q=(k&Ω´°˝∫vôœ; OπªÊ˚ÑªÏ<ÖØΩî∆∫≈_sΩ‡√Rºê9‰;‚¯ÉºœÜº«Æ°<åí‹;E˙ªùª›;1Ql=¿VΩe0=˚êLº=A<^ª<	@Ω=öº#YK=Íq÷<,ÌΩﬂıï=çπ=JŒ=H‡+Ω:p=πÍﬁ<7IÄΩUc9=Ï∆O∫í8ÜΩDΩ[ˇŸ<˛2*<:5S<â∏…<›q“ªD¬ù<}“vºﬁΩØº°™ºZ i;Öøª&tçΩR%Ò<\€ºYëê=˙ÏΩ°Â}ºz~…<Æ ˝ª˛ÊúΩKL4∫◊åæ=åG2Ω6Gùº[ËººW;õE˛Ω¬£º›+Ωæ·ûªozU9ˇﬂ¢<œòî<˜B=1
+ïΩrR<Ûl≤ºçwçºv7|ºFW/ºP=È”≠ºØ∫Y‚Pº~DmªAh= *=VÜÓ<’Z;ŒΩ≈≈xºa Ωz_=ò_1ΩèNÈ∏¿uΩöÒΩº8¿Gº?côºÆ?<e}á<P◊û=@»ËºﬂZΩi¬1=AŒ<∫åæ∫S˝ºπ]ò<4öÅΩáÒπ=Æø/=ò>ì<Ôì¿º¡w{Ω˝ë
+Ωæ‰†;+?ÄΩh≠Å:Ùˇn<¥Ÿ*= ˆêºM·`ΩkΩºXŒw<ÿ¡πÚßª.(ΩønûºF˘ö<Df= 9≤ºˇDúº!Yr;®Z_º(Ó=‚+˘:3¸èΩÉB0ºÅ5æºåaΩ)≠A=ÖpÔª±ç2Ωé¿-=ócU=∫»˙;∑§ºˆr<∏ª±<‡±;.g⁄<ˆBcª°˛¶ºøÂ”ºRÆΩd¥MºåùÕºh≤=˛?CºÖÇ<˙c’º†]=µËì	˘/ºâ»±=@È‰<°≥√ºÌ1≠<o’çºÿ~ÇºfπºÜXú<a2=–#Ω‹<EmkΩ≠‡=Õˇ3ºà<X:(≠º…ï¬∫3≥∫ä<àvw:.ì"Ω»O¬<œ≠µ=ó¶ç<Á[-<w¬:<i“ Ω#Ω‚
+ÌºœÍ
+º0_=;H<≈Cº|Z0Ωˆ/∫‡èZª%X_ª°fº[
+a=ï∏:»÷ÖΩ/;ú=ØÛÑΩË∫`º˝,û=q<mmë=Âù=c+=Äç<$n=Æ=uÖ<˜(;°?-<RΩë=t&ÆºW=∑4=≈3úºå¿´º	›≠ºx|±;5Aºic}ºPËB<«><a	=;ı›<yEgº◊ÃóºQEmªDéB:∫F3ªÇ’≈Ω´,ç=Ç«§º˙•=y<H==L@Eº≈%ΩcìÊºà]Ω≥dΩjh=L0®=¢¡¨<Á∆ªÂ∂Ωä≠´º≥Rj= ;ÖS
+º!‰íº¯˘º‰û*ºÁx=≈&=ét<yó’;.»ôºeìΩåC#Ωﬂëﬂºó?'=h·P;fÇ◊ºNêº∏…:òd∞ª°Õ:QHì=CÔ;=ΩΩÍºPÃÕ<œ3oºÃUv=ÓòeΩËPÌ<£≈ºÓŸtªiÇÿ<è‰=<ÖY´º‘Ñ'ΩÀÒΩßı<R]ÖΩwI#=ç-1=2m_;ΩØåºÏ`U=ßO!Ωù¨L=ﬁ„ÿ∫V8=å ô<∏Èﬂª„AÉª?≤”;ªÏΩR>Uª˝¿+=Ö+NΩ°L0ΩÛÉº§÷wΩ∫ˇª√; =q]°ºÄaΩ˛3=G8»ºŸ‡ºÇc=ïÛxº˚Ys<&Y‡ºÃÿ<°È0ºÁ»œ:µ<π∑ºr¥=®øÛ;G<£—åΩV6=vTΩ®éÒ<k=ã<lS<ﬂ8Ω,bg=,∂<#Òﬁ<Èr“ºøs=WÌÄΩ∏=âªTªæΩNª4¢à<V—<œã;;Ñ≈#Ω\Ø==˝iº‰JΩtΩny2Ω@_<JΩl^Wºº ÁªBÖΩ	)ÄºP·äΩmJ‡<0Cb;§EäºÜ$√<ŸÀ}ºI†<Ë>4=¿ekº?{Ω9ﬁC=∞0ß<MÚΩû!iºCATΩb<›åºìÏ∞ªu¬BΩ,9e=‰◊«ºÁöf=dW‰ªTõΩ·Àº∆TΩ≥ºº{§<Î´ºt√˛<à@ Ωc±9.´<Ô#Éπq¡ÄºÛé	º7f=Ÿj=X/Ω®˘;Eû?=Hé =ˆ8Z<Ω¢ß</ÁºkôÅ<ãì]º)ÒÎ<Ø¢ Ω‹Aã<w =!¿ºUu,Ωæ^◊ºÀæΩAô±ΩpÔn=Ωì¨=7BΩ‰û3=‰vIªíbΩ]9;›G<0¶<xÚ{:‹n=C"Ω‹û¥ª—‘L=¡¯JΩBnDºåiú∫üÖXº®ZΩ§gΩ∑}Ω¯ì=R7Ãº$≠bΩ*äãΩ"»£=dÍ•<∏¬sºÁB∫A†`=¶»:Ω·Â‹ª◊ÿÅΩ5bΩ§NΩ5… =œ$ıΩÖ)<ú2WΩ9	J<âáVΩ{óŸªqﬂÄ<‚„ΩMÏJº¡”Ç<_L√ª≠[WºkÌ}={Wvº>[Iºm@=≤e;O∑<&úpªŒåÑΩi‰Eº¢ZK=c{^<‹äº]Œ<òÈ2ΩGÆ9Ω?u«º∫åe∫$åÔ<ÍJñ<k=º6˛;ø˛›;)i ºŒík=1h⁄º”Xj={aΩ)ªΩÕ(=æ≤qº∫Ãºé=¿N=¥>º«Èﬂº·6=AîöºaI<Ø)¥ºb>ΩS®PΩ≥@=Éï ºVÏ§º¬~°=bO=ò}i<å`Ω{˙»<∑¯à∫Q!Å<wm;˘ü°<±Îå<p*.<∫ùäºFÖ(=π¿¯<ÀLΩ4/Êªãj.=/„ÄΩ¥ÒÂ<î-X=‚•)Ω MÈ;A}∏=⁄¬	;5¥ª°bΩ–’Û∏√ÄãΩıA=≤¶ÏºAs=ne.=WœÇ<ú´:€/º´´<?ƒ=…H6<¢îÌº/=À¢√Ω˚jç<ÒJïº ≠aΩ∞®=4ÓA=g)ººΩ8Wè<ú+ =raüΩm=Ñ<2 äΩ-ë
+º@mï<	SΩA·ã;ëˇªm≥ö:è¬ºè;¢∫ Ò∂<EuÅªi©;pbÄ=æjΩ_Ä*Ω}ÓΩëÿ†ºXòUºéV∆ªçñ=Z/ºáÒÅ<≈P∏ºc%–∫∞e*=Ì9$=—ì„;5◊íΩ`ûO<£3v=û/@=Èœº0®Ωo∑ªB_W<›#[=ŸÂ∏;ıÑ=»MË9ìå:¸7ûªâÃ;ü=ci}∫o*ΩïF	<bûöª€q3Ω¯óÓºÌW‹<ìÅ=I`ºóï;ód=ô¢∫;ËóS=V~µ<y$ëª¶ñ…<≤!Ùª{ô&=Fì;.ÁmΩãVºq	º≠cΩ,B>Ω’B=MgΩ34‹<	¯Õª…AΩ¿ìAª2Q	º®%Ω>.m=∏'ΩŒ_<jÜΩ¬Äúª`,.ΩW6=ùS•;Øwg<æf<¯ø„ºUÚw=–bå=Ku±º˘= ®©ª∂{K<Y·∫ÚÙΩu6Ω„±æºå°œºŒ=≤ ôºd¿ÂºPç,=iïcº…˘ºYw8Ω<õ¡ºz~ΩM:<|Ω.ÎWΩ«⁄¯º‰@w<⁄FWª\æå;tLßΩGî4ªπa+=-ôªº_;…<r‘‰=¨R»º+Î≠Ωè¯™ºm⁄º£πë;\z—<≠2ÖΩØ’£=QjvΩ"^,=ˇçª{≥<Ω≈7~<]L:„™Xº«».º—jÉ<\’;õæˆº”=
+ºòΩÑÌ¸ºn»YΩ¸dΩ<Kº≤ˇˆº€;{Ñ<-{›;ﬁ?<¥ºÆÇ<!ƒ®<ÇZ¿º≠±=ÿ¬Ôº„£)ΩÚ#mΩ‚wãº% ºµ˚;;z	Ω&Ω:= ›2<˙´7ºpDW<·®'<ˆQ
+=RvOΩ,⁄<ëÔº4JÄ<_Õ"=XØ8<châªó"<XJÜ<ä6áΩñr%<¸º$·=@J=—¥‰:zIºjMÂπ€räªr:áΩ(°=°8ªÊØºv@º……= Ωlº#sxΩÑo-=-ô:J=ÒRø<Ÿ
+=¸Wö;¿ÿUºˇgçΩg¡ªSΩî°x=õvÆªcc/ºx=ù«?ª™`ºHî–º!KºìÀ=j˜¥ª-ÍÙ;Å˜;6c=ÈÜ,º∞Gìº$}´ªVIb=⁄^Ûº:o…ª£é#;€¸Ω	Ωü;Aaôº∂»N∫‚<ØQ∑Ω]Eã∫4Ls=Ñq©<\Y=y(=‚æ˙º÷ªi=eœ?=îÄ=…b;?¸\ΩK∆ <¬aº,´»<ïûƒª–ƒÀº™AÂ;!>óK/=A =oÛÖºh´<aª˛ª]*ÈªOê)<◊R&<à˚ºÆ¥9=ÄΩˆ”=xº•Û\ºg∑©;€7tºFº˚ øº≤ÿ…=¬∂WΩÇÆ∫ıLΩç¡B<° æZcªCcBΩı¶Ä<' 8Ω!•∏<ÖofºFÓ=¡àΩZ%]ªú€»<nÁ6Ω7ª3Ωl÷:Ω˘®<|‹”ºE◊Ë;Ÿ–*ºãó=ºc¥=œ¯<â©‘ºVúﬂ<™É<pn<ΩŒI
+=
+=≤VEΩ›¯Ω k<ﬁ©º*gò=≥™æ;¬;étYª∆Ÿ¢=0íA:4Rºæ≈`</h∫</˜;kËÖΩªïº ≤¢< ⁄c=–#=ºèª∫ŸÍìΩAMΩı<å=≠B¥<∆æª>∑3Ωryƒ∫uó<ã	¿<<ΩÌº£DãΩ>°º’ÄC=¸[F=±÷<’C˘<vΩ´=T”ﬁ;‘&;!Ù†ºπˆF<îÔ<¡W
+<˘ !:7klΩkîª…%É<tΩPÔü<•¥zº'›∂ª5Ùì<˜éÌ<2Úõ<Ù«a=°´A<%åæº(Ì&=o¡‘;HJ.º5‹1ΩêåÖº<Ω≥<ƒÅ;N
+<µ∆º®,,ºj7Ñ<t·™<opÖ	ì¬}ºùÈ=öƒ;Û∆òΩ¸º˙>•;π®HΩæIˆºΩ&I=XÒªk ΩpY1ªVhΩz"=ÓM8;S™'<≤| º÷Gº´!<O˜ºs˝äΩ ˚-º‡ª/G<ÑM<7˙É<ìì==cuØº©»<ò<	ÍFΩãQ\=Ÿ¯ ºb
+ΩüHúΩã/<ƒX=ï“»<âX	ºß%=üC—º@¨ΩA=∫Ù#ºH8/=ÌK$=aı˚<›ö™<ˇ⁄Ò<E<Ñ˚ƒ;∑yŸ;∫< ï[=ÊTè<lE*<ˇ˛ô=çâYª´Ñç=/Î.=∞ÂÁ<RºZ@†<?Ω-ΩŒ7ºï(;‚ñ=£(ª§ó=•≈<îß7Ω\±VΩ%@ª\˝¯ºŸ˜OºôΩèx=¥˜K=€ó=£	<=töî=°F=ºó9~º|3{=u1<≤†;õ»S=‹Ë≈<Mä™ΩuÑº4c=πTÿ;.ùõ=&Ü:
+eÏ;®.’ª.¸º‡ß<Dha=ŸÉºMåzΩbSn<ˇoH<")ΩÕIΩ◊¶ΩÖ°Û<oß9Ë´'=⁄ºX∞ª6lΩo';=r{≠=x Ωªx*$Ω÷‚›<®á<ºìı+=úqöΩÇ:⁄†,Ωè¬Ω"
+5;À"Ω §£ºﬂ1ΩÑA≠Ω[π@=ŸÓpΩ@K⁄<à#à<ö◊ºöVºbÆô=¬ΩÉ‡<Ä n<ÁÁ=2=ìÕÔº%	ñΩl`◊º∂åΩg)ä=ôﬁ·<ç>>ªö‘;P›‡º°+n<)òpºô:ƒ<≈ﬁN∫§´Ω®1¿ª‘.Ω&ªò”bº—‘=ç∏<E∏ÜΩ]ôŒ<YqÀ;Çä;é‰Qª˙†™<áØ=Pü£<èqÛ<JuGΩ∑ﬂå=¥†Ωcpç<Ÿ€ø<Ω°<™åº¶ï<9˙{=…4—<»ºB8 Ω2®Ω_ëªj'1<`Õ=⁄◊Ωßü<"¢eª…rª≥BºX¢º´1B∫∫ã¢º˚±fΩ∏∂£:œmA;Ç–1Ωªi <á…;`Ω«lΩ®éÔ:ÜΩ2\ΩU4I=§«#Ω=ñºJÕî<„<Üü!ΩÛ|=—÷1ªÕmº¥É∫:*Ω+y1ªétÇª†˙πı…_Ω∂0\=ù◊+=æäÖ<
+Rb<]ˆ2=™]û<˘˚3=EΩ≥Å=C®;Ωn≥º¡œΩ\òÊ<*_É<|PΩ<è<ßg∆<Eéc=ìêº5
+¥ºë)ºúl#ªIüÄª-<<iœ8=JN:ÑòÊº¡0 Ω8x≈<ÛS⁄º3* =G¥]º}?SΩÉΩ	ô=ÿáüΩµBΩ%(5ΩÆ‰ùª€≠º—π6=I…ó<ÛSF=‹P-=ΩıÖ<Mß<˜›7ºzÜV<3&Èºh≥º$X0=‹clºÇ˚-º∫ò∫ºÁå<ÄdΩuiYΩé‚	º5ù∞<¨´<W∆;Ωí|≤<>aa=WuX=	Vº_[TΩyŒXªπ¢ºI·¬ΩFË6Ω	Øãº:!ñºa+Ω»[ΩJ—¬ºÆ…Î<∆˜<”Ü·º9[<∞ä%<5Ÿ¿ºo{ºˆVJ<V≈V<õuΩ‰ux=ºÙLºCå•ºpuL=πåm=oôùºƒj%ªÃ‡>ªû£Æ<ÛÕB=z∫SªW—?<[Hó<ÌÏﬂº∫ΩU<^Iå<>=<HÍ<éÒ=√Õ=?[<k/’:Î+˘º˙cπj; ;8Ω
+$-=ú}ò=≈<=ª⁄ñΩ3@Ω%˘<ícº¶=¢ÃY=ıﬁ)=_ê<Ç$~ºÈ=Ê< ¥Qºç¯}ºÊ¯U<SΩœîn=:ΩêxΩQ›º—ù>ªz)=^za=∞¥ïºZDë<Á¬–;9éä=›]<Çºúº;+;Iv%<nΩÑ=”j
+Ω∫Á
+=:¯>=ıî‹<ÎÆîºË¯D=5•]ºÆ\ë<Ôª!Ωˇó9=(n=:ˆ%=…˘/Ω∫ï=
+<ÃLC=&IÄΩœE<•·Q∫◊òΩ,=/Ω…bJºΩ≠:c<¢ΩM…œº[V ºUêIºX><d!…<›¯ù<÷≥;Õ”…∫^ïÙªiåF=|zÌºÈôf<")º©|o=√ˆΩ¥∞±<^fÅ=w°
+ΩMÕ8Ω &<·Öéº1U=õ=ˆÏB=«@s<C¸<Œpüª1!!Ω∂Ú¯ªæåO=(Z;<˚p<QΩ=¸àΩÿ‰•<Æåîº6Ë∂<ÆËSΩírW<bÊæºù&Ä=wÀºΩß#Ω±ØbΩ‹”P<≠5Z<´]¥=?-ΩV-Ì<›<ƒÙâ;Wà;xü∆ºo©‡º&I¸ºkËΩj`=<Ñ4ΩdübΩ©R<≥y</=„á«º>S<Lfm=Ú©<M›_ºƒJ+=ë¡∆<≈+I<YÄªƒÜºa1</∏ãΩYV=∑„Oª∂÷oΩ)S;4<a<Û⁄{Ωª{2=ôï®<®„º∂êwº™É‚<38îΩì∞Ω˙jˆª'<˝≠áΩ˜ÒX<
+s<xÅ-=N˘<º>o=Ωs“;C√l<ÈRè=^¨ΩªkÅbΩëÈã=—!ùºDÖN;YÈºˇ∞=Üa*Ω…P><äÆ=¿·aΩ¢ÿèΩm$<rk@=˛Ò•<3ÏÄº´
+£;cáxº-tƒ<X"!Ω„X/<©6UΩJ’<ô≥ º√´∏<Yt∫H‘ΩYUºp:yé;x˛<(û
+=¬√›ºì;QæX›ì<J€8;ıüÇ<ﬂ¨_<¨/Ω©<)ºãΩ'/Ω÷UÇºﬁÙºj7=»/π√»¶;1«&º˛Ì=vûÜ6`úˆºÀm>=YîΩØÃº™KMªïv£ºªñΩ˜‰ºCΩL„<ÿ6F=«ºOøΩ÷<ñê¨=%
+ºØÂFΩñ<é7PΩÃ€Ìºã◊Kºˇ≥)=0ıÏ<bºœΩv˙§=X‰=ºΩ6ÎÅ:AIÄ<≤»<ø»Ωíiäπ( )ºì·„ºk¢£<-°à=Ü˙«º¸È;ﬂUKºÙ’4=AÜ´<.®<÷ûü;›+Úªsıà<ó¥¯º»ÊºçA7;#ªºÙ<º	‘ûªgòE<¸vWº q7=Áñ!=>"í;M(êΩôid=˚¥î<H˘~ªdLßº≈‹t∫î–H=kßã<˚Vo=R$º€∑=£-Ω‰∫ˆºΩT=hÄNº]2⁄ª>˚˛º√T/<ƒ¶Ü=&.á<É!´º^ =ÃõN<æîµº˚„.;¢œRºÕO<Lk Ω-Â¿ºµy*ºVˇ†º49=F‹J=qáΩƒ;¸Ï-ΩËáΩÊV<°=MLΩ„ﬁ==¬$ãº&”6ºIvç<¿;=˙˘ç=xêÛ<öÿô=ÀGºº5æ-Ω7ÿÃºhliªÏt…;h<=/Tπ<ü⁄´=‰NΩ7b><wiΩiB7Ωœoå<aë<tíFº‹ÜπºË}ëª°Ôv=à ≥<›∫Ω>ü<‘Ò©ºøO9ΩZûÈº3‹ì=Kãº;çSª¡ºÀ=]ÛºÏ®Ãºﬂ$Ω—cÂ<ÌrΩæ÷$=uì`º|˛<"ŸÎΩzªÉ=më=´®ºBÈìΩ‡Ωû<µKΩ‡Á)Ω:æº†ó<cÔº®{>ºÃl≠=Ôùº¶çÅΩë¨ﬂ∫d-Ω4;Ω„E}=8j!º"ø¨<%M;•Ù∂ºÒÏßªàëX;è)XªRà
+Ω^øÀ=ÙπqΩy‹¿º»WΩ*‚;ÉIº=ÙΩ@Æ“<£_º∑„|==‡ªlm^ºÿΩ hYΩ)8¡=çÎªdS¶ª»ÅΩøÅº;‰˜<'„<iëºsIFΩcfÒ<-‘∆º˙±Ø;ﬂFΩEŒ!<ï†=h{E=˚UÖº•¯RºÛd–º˝Së=<T©<kÊ; ˘Á:XéÃº∫X›ªâïΩÿ‚≈<svΩñ*œ∫(∂–;fvΩ¥ÜÒ<îÇ=ºÕ==˛ò;æÖ|º«Ë∞º≠£Qº@ΩŸGõ<œ.ΩaÀ<-Ô¨<˛».=h€åΩà˘º^…7ª' <ôñ	=·Ωá=◊=A\ΩáC ΩÔ¸º˚¸î=’©í;ô~ºTiB;<õ2ºHg‰º£•òΩ2∆¶º¿ ºå∑<cWPº{~ïºÂ»ßº¢{Õºå<ya=Qå<âÏ/ª{ÕJºå•8Ωåiª‚£Î<ô#?ΩL≥Ω\ªtΩ:=¿‰ºﬂLπ<ñYçΩÅÔ°ΩK“¨9^cª∑∞BºÂ≈ºRä:µÇ;*.êºÑ{∞<ijÆºÜ¡À<Å˘ˇ<Ägpº<˝WπúN¥<Ωç(<¬—Ü;∞˝<dùú<2˙!ºJ+âºp»;Ìx®=Â!KºÈfû<æ¨ñ=•cDºâCºMΩΩ;º"÷º?kZΩæ`Ω®B±º–m„<‰á‹<‰¯~º;Œº»ΩtK=ΩŒñ=à•¥ª{ΩÑΩ·…<ı«÷<æ‘)=ŒÄΩo≠='ÏΩ©M=1πLª+óº˘≠=<\›:ˆ≠ï={-?<Â7=Î‹öΩ∏;ΩÜUΩ…èP;>˜º7Ëº∆¡ªµ9=Ø´º∏}=]˛MΩÍl¯<]qk;Xç÷<Ä-øº@√º¨É=ß0G<˙¿<;Í=ºVo;˘SÅ<”rM=#àè=!”Ω<K}–9Pºe=èY/ΩqO=äÄëºî==W}AΩUï–º˛dßº0∫¨º^hÕºÜÚºÚpºﬁ^?Ω¿—<ÿ≠Ö<"Õ";&$Ω∑‰Ú<*»ß=´W≠º)üß:â¯ÛªÏ =n0ÜºUπàº∏tª˙%=§•<µºÙ<à|Ì<€⁄ Ω*«<=:=\<⁄oƒ<$`∫<$´Æ<¬éΩdﬂ;Xä'=˝ÉºWá—º±ΩX=7·î∫ê<⁄<∆πºÉ@ΩVÓ<"dÅ;˙ﬂØºnÿÎº∂Ö=·GΩº¡ºÕÄ	<e˜	=ÛÇ4Ω‘ö#=Q'ªº°à™;$†49+ï<ﬁÄ`=&ji:>ÄúΩdt€º9[Ω⁄“r<ayº8OWºÖÖº|çÅº±Øº|øºrΩﬂ˝BΩ„Ùº2;rº †<Û.òºs9FΩ÷jÇ<Dég<tÚºX-&ΩÆ⁄Ωñ–’<öØ	=∑J≥ª®,@º|/ΩM^~<ä¡4Ω∆(<n|¨<‹E<ÿFºÉë≠<a8ªΩ≥®yΩxæÊ<3EÀ;°£p<mÂYΩ
+N|º‰ê<ﬁ5o:Ä¯e=”î±<6¨ºy{è<r\áºa˚˜<W’I∫º<˜˝ﬂºÌó1<¶êàº†ÖΩY•Êª+´ºç(≥<yöøºüw—ºÌ<†L;ïÃgª9‹<ı|<F0IΩ-Ω2uÊº®ã‡<√P¢ªâÒºÆŸº{üqº9$èºO0><ÛÊΩ»¯ºº•dY=≈>èºßúºJq=LÄe<∂¶.ΩoìÃª)ÖΩ7¡#ΩorõªﬁU=|àOΩ†s|<¥Yü<K1<C˛Û;IÆ˚<õ´º+∫cΩl\ßªC!/Ωˇ\í=~ˇ=ìı5Ω`·oΩ* <=∆ıBΩ’®Îª1Ëº¯:÷<'ubΩê¸Œ;@ AΩ[ÏV<—H.ΩÏRí;áiæÛF;Ï?@Ω 
+#Ωq˜‹ª†Ö&=¥›ù<ÈÈ…º†aΩÈ]º!Ë6ª´8öºT≤=»?iºÄ†5<%+=%ƒ•<kâ=jàt<ÖEΩh%ÛºF6d=∂Ä$=¥Äªä2[<∆AÛª“6ùºkfÃ<‘»éΩá3ã<∫e√ºî Ω»ñç<'√<ÍŒ[<EyÑ=ñPmº[G=A9Ω{⁄[Ω¬™}=sN—<ﬂ“"< ™¸<Tü=fﬁ&ªLV1Ω€—=r„d= =≥Ω¬2ΩnΩ%∂<ÌÅΩˇﬁºıb=ΩnC<⁄+	<lÆ«ºËz9vfºNªE:Ô;∂Ùºªµﬁ˜<çóUΩX+˜ºy^F<Âµ∞<E∑Qºˆ!Ω;…AR<,¬Ω∞<ΩæÎ=Ö8º≈√”;ÂˇÈ=&j√<∫]SºáÖÄΩîT◊<°àΩe’r<_º‰Øä<É.“ªﬁXJ<ˆ*;‰‹¢ªß÷<V <ƒöóª—p<Åº±ôΩ_πªxΩœÌ|º§i™=ÿ˛c=8Zrº:∏π<~è‰<	∂Çº2g„ΩJ'ú=”U9;pÑ*Ω-ÂÕ<u+ØºMíúΩ˝nò;Z%KΩ◊DTΩ•L)<fùO;M9+ªÕƒ’<¶ÀÅ=éNæº•·@Ω˛`yΩaÉΩÓ =Jˇ›;*{Ï<¿<X.∆<<]Çª'«º˝=Zz<‚9PºqlﬁΩ}ÚZª÷á#=å˚m=ƒíCª√ãΩÚ„ª˝;Ã7=RÖ,ºÍ7.=Vªº+ÒEº∑ÜºaºLRí=‡Ø^;˚Ω¸(€<˜õ0Ω)ÜºÊŸ=Ôñ3<¬∏2=éÊ^ºÚﬁsª¶ˇL=<¡Ä;æé1=—◊ªÆ¢çº/£u= ªTiU:=Ÿ<®„º0±—ºLå<cN–ºŒûΩù*ì=∆K	ºX&≤<][ªøDwΩ d<^<ÊΩô(^=#bΩœl˙;∏‰ßºˇO<|ö]Ω%Q2=cåÇΩúèª’ÖR=¶*|<µWŒ=—ÀG=‹#=…∆Ñ<≠bÅª•œJ<îx⁄<‡XΩbΩIΩ~XIΩÃ6ŒºÜïÑ=eL=;ß2<Z§&º[ıÌº)9Óº±∏wΩ™Ô>ªè∫7Ω˝+#<Ö!Ω˝£º€òΩ95˚<Ÿº∫nÑ;=ˇF?ΩôûΩ;”ôz=≈T¶ºcU2={∏=|Âæª@—ìΩ™[öºHsΩ(ƒ<ËÄ›=>€ÜΩRM=ıÁ≈º≤ÈN=¬˚˘<Ó”ÜΩ±jΩaÍÖºfÎº›˘äªÎªñ<èÚ<jx∂ª
+/<∫ÃΩhÈEΩT‡ÄΩ°,è;Ê¶∫ã'Ω†‹ºpãΩ+=ú®Œ;ÊN1Ωõ#=iô=/ºd¢äºÜöº$ê<™ÔBΩq"ïº°s…<äì/ΩŒPΩ˚2=ä<ÿ|øº^B=ŒÍ\<-∫‹åFΩ∞óe=&™ô<ø˜<TY"=
+`å∫,T⁄<0˜Ã;-’\;\◊
+ΩïºıÁ	Ω»+Z=&Ëç=óÎã<&7¡<˚∑FΩÜL<LÒº^2º°ª
+ΩùÚº◊ÕìºFàU=Á>=Ωd>òº)Ó]=Ï—à;Xúì<iò∑<∞rΩí»¨:A.·<æQUΩ›Bºiyºu©<i6†ª;5Ò;CÍªr?Ç<9`/Ω›@7º3|Ω’Ì;—=˚<ù0CΩqˇº^J=ËRãΩıîΩºu'=Jp,=´ÕÊ;©¡f<Ìã÷º3§áΩ2j<_Ã <ôº∏Jî;oà Ωq˘≥∫Æìç=’^@<º´‘º\=£Ãƒ<ÂAB=¥)=Â=¸«L=)"[ΩÌˆè=®—î;√›∫;ûh7ºˆÆK=9‹;á·Ω=˜ë)=kãÑºô=πªCÛ;.ã<6˚ª<H§=’PdΩ.æÂ<TÚÃºÎË*=_ΩfÅﬁºB•î<{µB=ß√ºa|Ω(‘È=ÀïQΩöBæ;@"√º‰T‡<73ÀΩÈW<ÊÎ$ΩuôÙ:4›‰ºwÇ‹<…y◊ºB5®<îÆΩ.–ï<Â0<•PΩÅ_|Ω∂JºÇÆ<à¸º‚â%ºè∂Ωøu¥ºû$=XB<ãìºT∏Ó:‡
+∏ªÚ4hΩ¡ÖøºÛf<Ë∞òºu∞√<õRc∏»√#ΩI/Û;x˜ŒºGÓªw¢d<Á7x=?p´ºΩ	Ãn=Hù?=å!<ƒœIΩ¢ΩP∞uΩÁq7=9	5=rÊ<TÿiΩ!ò±ªªÈ_=¿¿∫_ìÃºù/}ºb=Äº“—ºt~ºôÖΩ⁄«∏ºÿÈ ;;»P=jZß<wé<¨ïÎ:.E=ÏYø<3EÛºt—5ΩI¨ºÛ#<=Ùª	„µº0&µΩ≤t¡ºöC◊ºm∏wΩπÇ'ºÙK”ª‘äºõN≈<VI=P˙ºŒp¿<uce<¨º)º∆˝Ä<EÁ=Ìk˚<Ò{ùªöàºÀ=Ω£¿g;H´;7ª!,WΩ√ÊK<b˚©<‚“¬<>Íñ	≈1úºM…ò=∑¶àΩX*AΩXÚ;-j¸ºÎT„º˝G'ºPcë=<Ç<ÌKBΩûfz<~KΩ“	<áíº*:—:Â∑º<
+Ó)ª¢´°ºÈ¨<˝Õïº”ÈÇªa<5Ö<]&≥º%ø¨;qS=Ôﬂrºñƒ@:Øƒ;õLGºyûn=‹√è∫ñÍì9:Nºæ˛=<Î^.=ËOªŒ— º+ó3=U”œ;¯?ΩÙ|»<ﬂ÷ªÒ¨ö<Aé=Rß=˙©=L}∏<i∆§<Îß≥ª˛¨<ñå='≤<”.‡<RŒ…;l$>HN7<·èe=≠Q¬=”Ç<AËx<ç⁄°∫á≠ﬂ;¢Öíºdè#ªÊáXªbO=•°=±ÓºèB∏ª~¥2ΩU‡ª®˝2º4Fº…‰KΩ»≠ö=y÷<ù='À;éT/=˘Ω.ΩÍëÖº>}XΩlÃ<RdΩ^hj=⁄åB=‘µàΩ˛F7º´o´<ñ=9π=µnÄ:BTº¶õº:(©9¡b<;CK<øT_ºu•ÛºMæ7Ω£3&:Q_+Ω.ÃuΩIΩ®Î?=ı˚Ï<?8<…=Ω'£$<Tûª‘Ç<{è/=‰ŒôªÛv‹º®œ3=u>_;0T∞=∏BΩaÎS<ß@º√!§;1ˇª&HÄ;ÚÚ’º/í¡º—Ô9ΩxÔ∫Ëøºƒ4C<{|=õO ;Z[WºMÓ‡<=†<I}<ùNæ<J¡=m+0ººf$ª§]πºÃx«º©jΩªz<”Xã=Ex©º¥õ<Ìì∫44uΩ™
+<àM;=úáΩ=«KΩ—ﬂ⁄<ˆÇΩÖÖº∞`—ºPé<& Ã<ø,UΩü.2=Rs&ºÔa<UVM<ë><Ã~ÚºTMQ=s<jãΩπÙ=ü”8Ωáµ,=A˛›<~ Ω<Nœªº,î0=_j°;}•[=≥#ª;=»Ωá√ºª+X=#ã6ºüY<=ﬁ-<L«øº∂¿⁄;ﬂûÖª8∂<µW1º§©'º€Ã º ﬂ6Ωü¸ºÚ<ºGeóΩG^< ‚ºIXoΩˆ3{º«Hß9z†ΩÄ Ω©••=pVÔºœ¿É<m2=ü2é<∏‘ΩÔŸ<K]˝ª≈Sπº&„â;åu^Ωh&Éº’qÑº¸Y≠º¢Ç;é2πªp.N={_Ù<ÙYΩ]z˘<Ê≥<èÌ<ã‚ºf†="OAºdFÏº=}QΩ∫˜3ª≥ùõ;Öu{63∞{ºD-;,Gö<Çﬁá=π§ßº'÷˚<i€	=0=¸Zºx<¬◊/<ÄºZÎïºÀ$ãπè$Ωπ/=Ç-‚<]üìΩ	p>Ωôùç<È3˙ºª;™º2ﬂ<Ã^[Ω¸b=PΩÆÌªòº¢ºËñ∆<>Í†;I´=ëï]Ω”uQΩTÅ<√æûº!ËΩ›πBΩC´ºÅ‹ÁºˆEº>`≥º:qZ=LºL#
+Ω◊˚–º«ˆ=ˇ;O<˚8ªÄHD<m≤v=˝¯º√Iº<ıY2Ω/èÒ<¡Z’ºDü<†ìÎΩ`ä5ºA,ÀΩm»oº´ãmΩ¡^ú<ôÚ[=ÉøîΩ»ΩÔ_ê<V-„ª[€¡º”‰p=∏9ºú£¨ºê˚=µƒ°<õL§<9åï<izΩÏ‡8ºfœ8=%∫‰<hKº¢ò<õŒ-Ωé÷vΩ{™Ω–÷º;SŒ<P–ˆª"{%º§ß3º8<â>ªXŸk=T&¶º0–/=‚ø%Ω»>%Ω‚Ω©<9£˙;Ù£º]ú/ªªÍ<MVÑº;äOΩW?&=Ì5¬<¸û˛∫ŒFÉºìs'Ω’Ω!¶∆<`>mΩkEáº`oR=◊	1<wÒÆ;pÊØΩÌ<°∆ÿº–/ƒ<t.ª<Ÿ4ˆ;œ5=€˘Ö<˝Å˛ºﬁ#29Ë é<ãÜÏª¸∑˚;ó<Ÿ}Ωº û;rF=7]⁄º+z∫–0ë=f@<pä∏<p©öΩ≠ <miêΩ9f=…W•º—œÖ=°%á;8‰<˜@º‚Rœª(öºù(≈<;“¿:°≈º«ú…;PƒΩÖ"<À˚∂ºhÆ,Ωqºm=]v=±Ü¡:k=˜˛;!H?<rΩÇ=LHΩfmº£º,=H.)Ω‘ñ∫Ïì;MÌVΩUiΩB©TºFg=^&¡;#˛¯<ç&ø=€q6ΩÈE˛ºbBhΩi®sº°Ã”ªsÀ;~!x=ﬁha<3ú</(Ωä“2<U[±<œ=&§∫hóáΩ¿,ÜªÏ›ˆ<ª©1=÷√ΩÔ.∏Ω“O‰π°ú=Ö=Y™<Tµß=a‹ºπ—óºúÄºd‹Ç;Úî=|Ω!ºÃ¬„ºÜ…∫<^º‘¸-Ω˙oÅªN1:€º<ø-˘ºÓÙ<î=EI<∫Q}=T±Û<ˇ><“≥<Dö”;-<dÆÒ<Üi{Ω§0ø<˘òºa"Ω®Ÿ#ΩO´Ô<Vevº±øF=ê‡ªA¶Ω¡˙–º“X;¶Ωö=b6ºV‹Ôº)Ï#ΩóY¶ºi@KΩœÍ1=¸áº• ¿;–dºn6Iª´≤∆=˚≠=Iß¢ºÀ$ˇ<àüº˝6®ªÿl<(`+ºÑ¯®º∑/°º"£©ºLç<^--Ω3*∆º˘¡õ<== º–û8Ω"≈LΩeﬂ∞º±9ãΩïk;°NΩiìCΩ?úΩsÉ<Üc:F˜”:'ËáΩΩﬁdºöÕV="9Ω˜!ñ<íe‚=£”ÅºOöØΩõO<£æÇº^Ó≤;®∆=–˘µΩ—â=q©º:í!=TÃº⁄$«º§?8<È;¢;nªº4£Ôº∏ÎGº'…ª~∑üª∆ ı∫ıÓüΩA≤BΩììΩÔN$=Ù"»º~ΩÛë4º4WüºõGä<ÂΩ⁄;R®º€Ç<˘⁄©="E;e$€<£Ö<µΩGÜóΩÑµGΩ≥B<Ù'˝;É~tº˛@=ı≠“;ÓÆ≥∫⁄çD<˝4x<€fÁ<6û$Ω~∏<Ï\K;GË<k>å<Î‰Ü<ó∂Ìª˚ <!ëªÅ€!Ω≤Œ<[Œºık}=4[=Cû‹<·§ºÌµôª*HÔ;?é=ΩÓ~∫∑à°ª5å…º™Ãº…<¶=Céº$sº=í#<)™§;9¿˜<f —<tg?º?XG<îñäΩzÇº>4ΩØèe=k˝‰ºáuº4Ì◊ºq 
+;G4ΩÅ∏Ωy/ºiπ¿<Õå</˙¡º…÷<U·ñ<|^ãº/4
+Ω’é¥<
+°=7$ΩîøªªÀ›«:DoHΩ q¶<ÂÚÌªjﬂº åªÊ gΩlÒá<@P?=ı*ª∫. =∞ˆ <2∆ªÒe=–˙√<¯∏§< Àj<˚∂kΩ~Í%=BØºæºßºxmÜ<(»<<ú«=¶Dl="Ω;Leº[íª0úäºÍCΩ+=LI<œ?˚ºKé=…≠çΩ€,›<„*£;¥œªtS±;®êôº“[ΩË9´Ì=QÄ]Ω§•∞ªp[Ω$êî<(N«Ω“‰ó:ŒB“ºˆYÀ;˛&ΩôÑ<ø@<C“Â<¨Ωd]=ˆËí<mENΩ‚&°ΩÉ¶º‡ôÑºPn9º>‰√ºÍ¡è;—Æª6Ôx=‹f=“ü:fu<2=Ä=PIKΩÃ)C=õ≥<øè$ΩÑ ªËˆ√πå(Åºº∆˚<–à+;ûë=N$;M‘≈=ı^ñ;*jÜºÌY<I‚∏<.eà∏5	Ω◊º›%%ºBÆÄ=u√R=E:¨ª|eòΩØÙ¶º°á=Ã’<qÇ»;ŸÍpΩ∑GG:–PŒ<~ôªY9Ωã$DΩ5Øìº˚be=Wﬂ=›=¢eH=m ™=-7Á:≥C*<‡èΩ©¸;r]=&J®ªü0àºÊ[ƒΩµã1ºL⁄¡ª„ΩPUı:ÑQ∆ºŸwªˇÒ∞<π-=c´≈ºÁvé=é…ªS†rº–gd=§±º˘íq<ƒ?ΩÇ≠òªwÒBΩŸ	/<ùˇñ<¶p<9Ω‚¿B<Cî;ó$Á<PaÖ	z‡ìºSöb<Ÿ⁄;rÅYΩÉ¬ª¢u<ˇDΩôØºÃ™\=bÇ˝;îº+ä£ºXƒΩ∂û,=îÈ¡;Lïπ˝|‡<ñK¥ªv*ºí—ª¨ÄΩ<∫ë8Äª£Ø'º7òºÎ¢¥º√D=á3º0®;{º=<t(‘ºŸ‡F=N•{º1ñ?º``≠Ω™íˆ;Óã9=§Ìê∫˘µºØß'=´8ΩqZ§Ωz4={∑7K≠]=∑¬∫<Û÷;‘› =6T¢<Î„9ºÄ‹ª<m©∂<ÖU=<`p=¸FJ=÷(<ÄÉÃ=k`ö;≈∑c= Öç=”[A<òÚ+<å=∑;cΩ‹‘ºˇ+Lªi¢º<;·+<B=∆¿¶:<¬©º1ûèΩÁ®®∫‡Í‘º{
+=ºfç∏∫…Áe=Î@'=âCµ<˚Ä<≠zì=<}ºœùß;å ¬<ß3;¥ëßºÎÿS=z∞b=jL¬Ωs¢∏;ÂLz;2m¯<ºqñ=ØFÆ:–˜ºµåπª‹Q»ºÓ¥0=[Ú=Üz¬ª⁄Ä2Ωvﬂ<R‚<<ﬂ
+ΩÅÅΩ;h£º ÿâ=f”ﬂ<±°<î
+;d(Ê:Î3+Ω˙h=o&¬=”∂«ºY.Ωë«G=ÿcøªÂìz=õΩ4;OΩ^¶ Ω·ãœºÉ≥ÄΩ˝FøºÕägΩ¸òäΩr€πMÿ)Ω8·^<Iƒñ<,-∂º…ÎΩ%ä™=	˙»º˝ì=/è º’©<Ÿ9öºSzºqÑΩFÃªúΩËG=ºé=ä,<M ‰<Ö0º8Z†º(|Ü;ª›ó<F„®º&¿„ºf”Ø<‰(Ω¸˜º){ º‚ÇM=~ƒ∞<¨"Ω6 ˆ;è}Ø<Œ'<¢Õê<∏ı5=ÈÜ=…ü›<vj9<<±ºıÅ=¸xÉΩH—;ºbÙ	=Ÿ#i;9˚?ºª¨…<-Œ=Y˛*=”ΩDiΩJy≤º∂H˛ªo«<7†=É¿<ï◊W<]π◊;œ‚ˆ<oäcª∆ëªΩ¥;:µêº£’‚ºëBΩã≈ºPLΩŒ¯ñ<PºvîΩ≠=œ:2ùíº9Ωd[	Ωêv=∞ˆ ºÈkÌº/º3=ïÊT<£©¢ºâÑƒ<I´<ıÉ<2c”ºÒœ4ΩÇMˇº<J:kCö;˝~Ω⁄≥=ñÏ<À8Ê;î€¶;´bR=ö÷<M±à<T∏ãΩdZ·<ßº∫<%~›ª°aqº|Ö=Ì’≥º’«ÉΩ2Luºb`´<G-=™¶ª√”†ºâ^¯<´H∫<Ú˘≤;ØH;ró”<éπ∫º∞^ΩhbΩ3˝Ë<»Ò@º◊‚=$ÅF<m]~Ω‰≤íΩwØ5=ıØíΩ°Àüº¥§º¡!ªºVæºú°=¶zé<yà
+=éF{=¶Ωö<Kõ=é¶FººcÍ<õXPº‹3Ω˝Gb=ƒÜ<ËèëºûÉ˛º”©«ºn^|;»è€ºõ·	Ω¸Ç1=gÒßºg%ºqGóΩ·'J=ï Ω,{£ª-¢ΩP"Û<¥€‘Ω35/ºñeΩ¡¡~<_ã6ªÑ‚ª¬Aæ‡°¨ºÕ¥ÜΩ~Vx<Ó„Ω//G=Úı<ﬁ13º°ù'ª <?N(;{ê≈ºBì=˜™ï:‡Ÿìº-jw=Ë|{ª+º;DT;~+dΩ!Rº¥<˘=Ö^£ºE2ß<ÍR7ΩÍ”‰º‚cΩ‡x0Ω†Ì;§Vb;Œ&ºh®Ÿ<Py7<Wuá<6„4=∞©hº€40=ΩçΩyyº	ÌL<bP±π„™…ªr∫©qí=7ú˘;ZëºK∆<
+˙<hÉª<€^“ºT0ΩåÂHΩLx%=r∆dΩÕ˚"º•~3=k_È<Ã<qê˚ºíLq<So0ª≈G=™` π†ÆªØ›=K£;2W‰ª)A˜<§<WËÈº}kùªwı=7*∂Ωäû=é÷=‘rΩÒ¢<≤ÿ=aßÕ<2Ü'=∏zùΩ7Îw<<:©Ω}^=ìÿ¶;µ
+›<çæ>=¿u…<ﬂÖ º)ßÉ;Íd3<(@=E√‘ª4ª o;πÛfΩ?iΩº†ﬁΩÇ,¶ºùMŒ=núó=ﬂ/å;
+ºÈ!a;kïá<-$ΩA 4=ÂÜΩœÄº¸’·ª1¨ Ω3)Ω·ë<¯ÌÑΩV•ΩO˜ªÚù<±=√“ª.0°=¶SºÏ”ΩV˜XΩ"o„ºè∆¨ªæÿÖºë]Å=‚Ä£;†Ÿ;tÆ◊ª‘:ª[6=çÄ7=q„3<0mïΩﬁ∞º<¯≥É=*”}=ñ*…ªÅõÈΩ·ç∂º˜çUª	øH;E.¥;D‡ß=¢≈xª'•ÛºöVËºÏ‰Uº3ó∏=„Úö;c[%Ω÷ø<D™ºÃWΩéë<eãˆ<K∞¶<ﬁC‘ªì•º3Lz=ºÅ≤<sÇÚ<@ıºoø:∫ v∫1]Mªa›Á<ﬂz∏;?Å1Ω”‡ªç∞ïπJÍºóô9ΩøÁ=y¨7º)≥T=XJ∫ªÂÔYºcø¶º√ê7ÂrΩIiá=Y:ºπ™äº‡-Ÿºâm<˙∞-ΩT=3=˜·)<$π§ªHÅœ<ßÙº∏.Ç=:π=w¥à<“
+ª<B§Ã<a/:\˛<∞ŸΩ'`†º≠™Ùºy#Ωkò®ªV =Ú¿(ΩRg];ã5Òº:·ªETΩ¶M"Ω	VdΩ'‚<jk2ºq?Eªñ‚≤:å≠&=l∑·<c‡º3JΩßÿv;Àë=Xé<oj≥< 1‘=’ú‚º,=5ΩYÖM<f)Wºü∫5ªÂW¶=˚òΩâQ=W_GΩo*}=Q;¿"cΩouº	cBΩZz©º·Eº˙Ä^<˘ä@=Ëº#rÌ<XΩ4ﬁ;C√º°µ;=Z
+<*∆?ΩR†˝ªÛã<î+Í<N·´ªµ1+<RE±<‰ΩS=…Äá<S√∑<90#<§∂ƒ<â√yΩ˚ºÉ«1ºØ	ΩÓÅ„ºwÂE=Ú√*<;yfºE„=ÇÆºƒ¶Õ<_ªTΩçV˘;kº5s°<co[=ó”¶∫y
+Ω	Îõº¬«H<ÁËCΩ@	©<ÛéÖΩ'”x<wí0=¶S∫<ı¢<‹˝º‘ú›:≤ºPÇº«æáº»êªQïtº⁄È#=ÚH˚ºÂöΩg_°;A=w<$2=U`<K∆oª•üªd& <jfêΩåÜ/=•«Ωv∂<€ºÓ¶:•:B;ˆﬂ†<Prﬂ:mèÙº…ö;;'Nºˆ4(;DÚCΩ®”;YÏè=xœVΩ˘ÉŸª4ñ<2<%=oôΩ≥6©ºõﬂ/ΩI–†Ωñw==RVº2ìFΩHjËºá‘:å∑ò<Ì	N= =Á<„$Ω÷B%=˙à}=Ó),:C¡<"R<øi≤ΩIÜs= ∏ºûh<wœùºzÈ< Òªl	ƒ=êŸP<ò];ÑvΩ¥÷Ì<oZÏ<¬e/ºÁ◊ =Øö ;ì2Ω÷<©ÁvΩf
+ë<7fp;√ÏªÒåœ<?ì{<¿Âºe-CºÔáõ=“/éΩ%£ºƒ-ΩKP<}äÀΩ§h<√†6ΩßL¨º7ç:«ˇüª‡”='ò–<–Qºˇ˘⁄<:ªÜ<,5Ω—^ãΩKVKΩ—Ôÿ<qk±ªõà+ª-˙[ºª @º·t=ºÄî=ìâº;"</+=úeœº∞µª^i`<éÚdΩ÷$<3ﬁ<B±º7n<Ú‚,<X¥Ñ;Pò=:ﬁ9=ÉöºñüΩÂû<„˚<„3<pÒMΩ€¡Ñºµø∑ºÏ∆}=‚)=Ü^&º°à{ΩíQ\ΩâÅ=¢Mºú‘;ìÕ«º"?<x”à<Q∑Ω{Ω*∆Ω˛⁄<2î=C.“<ªÃ'<P∞«<§ƒ=ä[ª<	ä∏ªÒ)Ω
+©ä<t+=ŒœØªΩﬂ<Ï≠ΩQÕÕºlﬂΩ*÷˘º∑ÌDº}ÖΩC?º8n<‰ö8=—)Äº„-d=¥é3=öI∑ª=|=wxöºÙ—â<√ËΩ€©ºqﬁˆºu…—<j)º"`#<øΩ‡©uºä =.	 =„¨ò	ÒqÊªF>s=◊ô§;¢YõΩex<(À<ª∞öñΩ#äΩ÷∆a=óÅ=Åz°Ω)(ΩÅ≤ÉΩ)V/=Z%8ªãm+;\a=∆ê~<´Gïª’ΩºùáΩwıÂºÍ÷—ºùÉΩHœ£ºJ´ª÷5ï=SåΩ)Fâ;bM	ºı–Ô:[òï=Á>ﬂ:ëZÄ∫‰˙(Ω‚æ’º§<®«Õ:2r‡ºt!'=|yßº≈9îΩºOã<Ò	R;ê«µ<“Õ≥;ﬁ1:ä¥û<O=—ã∫ÔTº?ú=k◊É<ô”<’≈k=ò9«<$ø=∑åΩ©ê=i∞=πù`<¸m <ˇJ∆<≥ÂàΩbÂºêÇ,ª=ò™¯ªΩÁ=Ò¯éªr
+4Ωm{ÜΩÛ6Q< ™E<ÀÙΩ#(NΩ‚ëî=˘M=T®=ûÃ•ºfÍî=[[Bº~PM<˜	≤ªê=¬ÒΩ´]µ<µ~=èrΩ0=“ªBﬂÖº¶G=Ø|=óµ:Ÿmº¥Ùª9nºﬁø;ßK#<ãÔ¡º·˛AΩ¸Ù}Ω<◊∏<À,=Ω)q?Ω¯ÉΩäG@=Rﬂˆ<…!û=Ë®ΩhJ–ªÓ⁄äºˆ◊Y=7OÄ=>ΩWãΩãë	=J.8;ƒL=â¨æe@<’ΩΩ<á•<g√º⁄Ωû•¯ºΩvÑΩm™¬ª}méª4\ΩÑäÅ<°?]=⁄(Ω©6™ºA∆,=ÎCº…{=îŒ≠;zäd=uîΩ?Rı;aΩìΩæ˚Èº9'ΩØ.=ÎÄ=x2Ω0h3:Ç¯£ºF’º}Ú"<ËÙÇ;‘˛≠ºhl√ºîU<wc<Ωí≈‘ªl-gºÅ=π€Õ<„Äºç¢u=¯Åx<“ <º€˛<yU¡< 'qªñ®úº´U§;g1#Ωm=`òΩç¨∫È˙˝<Fã=üT<Èrá<ÔXvª33=gΩëºBuΩeıº c‰<:ãt:—r==+≤tºÆ<dÙqªI’<ª6Rñ<£j< pº∑Ñº§Õ$Ω)—Èº6`öº};âΩ®{=(ã<¡M
+ΩFrπºÇôºLΩS™6Ω!gY=ö∞º‹@ΩBæ°;ÕïÑ;g√º⁄ä1=∏zªéΩ‚–<:y;Ωœ√{º‚ëI;S6ÜºÉÈº˜V<FÃr=‡Œ¨:ÅŸiºº∂4=ÊÅ˚;HªÏŸ"ΩbË´;…ô#ºÎ± Ω≠4Ω&Y,=y5@Ω,≠cΩ7û<:÷±<ëøE=xé=A-ñº@:QOBº2§=c8=éœΩ<(aﬂºìtÀº+Ω"ıºE∑ª™_ =ÀÁù<„·HΩ=∞cΩ\Í·<+*qΩf…rΩ⁄qôº¬=õM"ΩWlÜ= ~<∞B<Èà4=—4ºpvt<4˙rº‹-∆<îv∆ºï√9Ωu≠ü8˝çº¨-ºÍE;º¨Ω5NΩÔøUΩ1éüΩ•n[=ê\∫º¸-Ω±àgΩ£k:=Â˘;√á<S##Ω]*,=„\uºr2WΩèèΩo€<zìΩõnÊ<À0 æËúD:âÙAΩ.v•º˛ªC;øœºP“U=·üºTM◊º¸ØrªΩ_Tª≤¨;º~)=:{Õªn˛pª\Ûì=e◊%ºIù=≈!ˇª˘òÅΩ[ﬂªÆÑ=ÿ⁄=ß2OΩÂ$=ÃbΩ$; Ωë®‹∫ñﬁ¸ªâπ<Ç}ˇ;‡åKºHƒœ:Z”πæw∑<ÿ-v="◊ªªü=∫f“<xÂ-Ω‚$=ßŸªX›ªMÏnªÂˆ=Ëz¢º¬èΩ·˙S<WåhªÖÏ<¢3HªÁıˇºA
+ØºøÓ‰<wÜΩû⁄Êº„Ñª%u—<5GÒª»æ¡ºuè„<Í˘t:Nñ$=î
+:>™º9Ä==Bè∑«/˛ºêH;ºÓ4<†∑ªßˆ¡<Ö√i=ûº/Ω.˛‡<æÖ=LWJ< e.=°|≠=Ìê= Ÿ@<>2ßΩ£êõ;ÀM2ΩcÒf=πˇ<Ω”:¥=x,<¯ò=◊–Ω∞iÉº˜äÊº[i=ü&^ºÊ><’
+.=˛wÆΩìùªö¥Øº	§º†ÌÉ=ˇ°Å=îmcΩ„5Á<|=OÁ=∫ËºË¬∏<yı2º…Yî∑)8=Væ„ºÈ\$Ω‘À±;Ï⁄º'fìΩà©Ó:;©ãºÓ„<™Ÿπ<®ßa=dÎñºÆsΩb∑Ω´8⁄º;ÌÌ<<+8;bT˝<¨˝2=SÏâ<n2˝ª˜?<<q›<{&=ŒJOºÖºΩÈp`<«@ª,=À? º€KÉΩ«F—∫K:ºƒ¶u<ŒÃ|º“=çgHπïQƒº
+É¡ª`K›ª)`ò=&î<©òDΩ;‰ó<L Ω,ßèΩÜ˚=∆sÑ<}É§<ÊÙùº{F®<Ñ#-=∫Çß<Ù∞U=˙<º⁄%;m√<%Î:<Ú0=ŸK<1øIΩÑªâ9„ª¸/:ΩR9Ω<º…ëΩvÇ=°5<jıºDΩKÉs<0 „º7au=¯πCΩjﬂ‘ªßILΩYﬂß<h&Ω⁄è}=œ)Ωí™:Œô¸ªûÑö:„/©=óz©<©KÑ:√õE=◊A=%≤=dqY<ŒßΩÆmFΩNyöº˘çΩ˝Û‡;BúºxFô<ûq:^£ëº•àÑπëQ2Ωµì©<,4Ωzá^º˘Ω˚«ΩÔ∫:ªŒ]ªjò<ƒZ<•9õπ"<Ê„=Êº?<=ËzË=‡Lªá√RΩ}´<™H·ª°,<(pq=Ì4—ΩwŒÄ=oDΩº7r=Îaº&-7Ω2¢€∫5 ¬ºyá:U≤
+Ωv´Ò<c8<7`àºP•h<‘ÑRΩl7ΩÆΩxm<%)Ω÷OäΩ—• ΩøZ∫ºV∏=I	ªº•4¶ºU±≠8‹ÿ9=ÜXΩ–ªÜï3<c∏\;7<Ω^[ΩBh≈</^H;G+Äºôr=,òP<ΩüºÛ=í”<*Ù<N•RΩ‚<K=ùfV<‘YΩY˚¡<÷∆>ª˝ÃºZÛπÕ≠’π;Ÿ~º}€t<à◊Áº6Ñ3=ﬂ…Q=.=LoRª4™[;/¨ë;µ|ßº∂¸.<mL^<øHò;[`˘:ÌS“=S5QºÀπ5ΩQ¿<Ì˛ Ω‚›Å<Ù~(ºÃìªWDM=FÖ„<XÎzΩÏö<;g‘Åºâ<;ﬂèº¢äª¸”=As¢<#H$Ωçπº}æ7ΩÑo;CºÔº™ΩIUª~_&=}-êº>&ÖºkT£<¨'[=Ì©ΩíUË∫FÊΩüΩ¥SG=@Ÿt< Vπº¸S1ºiΩ1!ΩÍyõ=_µõ<àßÖ<Ñqì=Ï<ÕVÖ=‡…m=M¸&='g⁄;¿ôΩ9j©=Púﬁ;«˚<∆	3ºÕP-=‹–N;uRl= ó'=·”;ﬂØ§:«Íó<ê»<S“ÜºG≠<R	∫ëΩê-•<ΩMèº1,=õ¡tº>Iºï+Ωgœ;¿Ûªºm˚
+Ω¯ˇÔ=ÓnŸª+U;ÁmHΩﬁèÄ<˝πàΩ¸•‹<%c√º¢(©<ÖΩ=Ÿ™;…˙ÇºQ
+Ω<˜GΩ¡â<|˙§<Ô*ôΩºÏ*Ωän‘º*´3º DÏºñ*Ä<√Ω¢∑Øºèwê=3°Ø:z˜}ºíÎ=2ˇ{<oCTΩÓÖ);7_<dåEΩú`Ç<=º™ΩR∞∂<Æ∫‚˛ëº⁄ù;6ª=dt∫#uº…™º˛∏;=%3ªíM^Ω0ü˘º¸’º%VO=√∑
+=_É<S√uΩsººfòå=mN<~Ó,<fΩ &ºO0 ;‘ïºdo?ΩÓºÖΩœ€ˆ<]g.=íeY=Ûxº?¨äª(|X=r†=ÙPºä\UΩZÒ'º≤D =G·çªh¡ºËäΩ¢Ò‹;vIºµI*ΩÓÀ@∫ èΩ1‚<ÿY:=ü|áª≥±:1é–<ûo<˜ÌΩ=*ÛÖª0ÎÜ;o∑Ãº‹ñ;SΩrÅK<°,Öº$x2º±&NΩE∆C<Ë)=<Ùê<ïëä	8Ωº&PÇ=Ã&©º„}ΩàÔ¿;,ãº∑®8ΩZ≥4º7æ<˝qOºÿ.QΩÏÔïºåU@ΩõÂ2<kÉ‘<Œª∏ºt=’ﬂΩ<˙]õºj_<‚§\Ω}íô<*K¯º˙qªóñº√-<	`v=∆“Gº=(ñ∫Û©yº¯Rfº…Ím=Ö
+—;Ìﬂ‡ºbò¡ΩYnù;Ë†:= a…;F√∫‡€√<hÌäª>É—Ω¬æ<~ˆ<C&¡<3Û<lØ”;€R@=Î#=î•=X"Ö<¯‹≈<i‰Ω<Îä=ÙH=›–=∑=È¡:º£≠W=p∫É=Ñõé<¡êÃ;¨lß<iøºZ8Ω(Ooº*Ÿ˛<††b<W…8=π•=Àõx<ãØåΩnu–º¸:πº≤ÎÓ∫~ÄÑΩög[=P~à<Ö’ª`‘Û<Æ≈ï=‹P¿ºJt;N~º•Ö+<<xL<TÄ=®=I9·Ω‡zÔ∫Ÿ√)=˚r
+;úßÔ<Ç°¶:W¶;ËÛπºÏ*Ω%¨<R=>öè;ïLΩ;ä==òn<÷.yº±ó¢ΩÌòLΩ˛ËI=v.@;¡–ç<ÈÌ9Ω@È„ºbÅºt‹$=«z=«Íàªã˝√º÷;\<Ä∞=<x%\=±íΩA„$ΩfÚΩ≥Í/º•ÇfºôSΩ-™º®-Ω˛˚"Ω∫oÖ< Ω Å==°‘∫4°UºÏ¡º
+=B=QCº*Ùá<#p¶<fé¯<∑§ΩqÚºñ*fΩ¯"ºÌÇΩ'©˝<ˇaT=)ÂOº-Ä—<9√º˝º’€äΩâÆÀ<Ω<åºß√Çºõ=°ˆΩe™uº’≥+=jú†ª0˛<~ÇΩwr7=àfÊ:≥oç∫”ùï;Ä1√<—yïº°’º∫>=W]Ñ<m›æ=ë&êΩmí;\8:<˘ÖP<˚®ª6ï…;Œ™‹<‚HX=˛TΩùüjΩÚyäº ü:&¿ÜºÏ⁄<@Q…<qÕ›<CsÊ;œ-=†"<l±ºzÎ<º˛£YΩ£Ãºùî7Ω<â<aSΩ‰˙4ºt Ω5‹_ΩÁâWΩH¸é<†—º>HCΩy•É=•Ø5Ω‚CÉ<(;j<ˇ=ô<c’Ω+jÀ<Éõ`ºÓº'‡∑:]7ΩL§∂:.»;Ÿ¢Ä;eMΩ'c= ^s=‚YÓ;G®º'Â˙<Ÿüºƒ,Ÿ<-”Jº≥ÛK=à@<ÑˆÙª/µºQ4P;√tñºjë)Ωæ€Ωa"»<	 î=ÊπÎ<∑=ä=A=‡Â∏<}Zò;ö2C∫;•%=
+;èG’ªx€ªfˆä<)ÄºK<d<ÃAÉΩÎ∆gΩˇø≤=zkäΩM„∫ºá] < ^Ó<ÏDΩÊÑ~=¡≥}º@PÊ:ç	=ë≠<ÿ	=%s4<èh!=€'ÄΩh[Úºê˝ú=P-«º3!•ºJ@‰º	i =Ø≤.Ω (Ω<∞´<∂Ãë=Œg!=ù˜çºñG‰ª‹áï<˚UÎº˛"é<ÃÒ0=’h=S≠ÌºG»ˇº8∫}Ω|«;e%Ω¯Gª-v≠Ω|X=JÃΩ†^FºaòìΩúPºhÓΩÇ∑<[+ΩÂ.&º¡rΩi\4Ω#.I<≈\äº∫ˇ–</,Ö=ÏYÇªó≈|<d≤∏º˘÷ªÛ≤ ºÃè)= L8=PäUªŸä=›_GªÇ-·º˘√Ä<¿≈º\˙m<t"Ö=√nººŒ=Ôà¶:b-È7FçÑ=∞jTΩ¬!À<)6wΩƒômΩ°j2=Ó¯¨º~;Ω≠ÅÑ<£‰Ωm›P={Èºx7+=ÖÒ¸<&(º™ÑáΩ
+YÕºyΩºr‹<º–DD:+aË<¨ ª1S;=%≥='¿‰;($.=-Œƒº≥`'=Â√:ì9ΩÌ‡="¢ôº¿˜{º˜i=jØ=HÖºÉzªL=}÷Ωqœ=29=d|Ω#ËWªgâ=ˆ5ΩËaMºπ‹·º?‹¬<ó≤ÑΩ_∂ºj5◊ª˜ß={1ΩAw;JÙ>=∑‡¨<ë]<ôF<YÜ∂;,+Ω#QÅ<|2≠Ω÷Ü∫<ü—RºT‰ºè]6ªΩ¶	='trºœl{º◊±õºg*ºu≠Ω$Ω©,dΩcÈºR¥÷<“ÒÖΩ”±†º≥öõ;&î7Ω˚"]Ωœ∫⁄Ú=ıiıª8:Í<†R=k0ΩÉqfΩﬁYqºéæ∂º<Ö=‡5ô=sV˙ºÄ˘W<Pﬁ3º&•é<⁄’<Í¡+={ß[<}ÃêºÈH∫cù-<1ã<ïΩ≈HΩ<‘V<2D¯<è=Í.º##»<L«º°jïπÁºªo≠ã<Ä˜K=/ó.Ω?›ΩsΩœÊ=àxΩ·™{Ωñyñ=®û,=Û∏ªW∆≠;úZ˚<Äö=eÎkº3¨àº‘Jl=HñU;ÃP[º@ !ºäZ:8√DèΩ`œB<3∂º¿õ˘ºKwñ<ŒDV=3Íƒº‚‰≤ªezÏ∫i;˜
+=i=¿ª·ËóΩ◊HÖ<âv&Ωî∆1=C´ÅΩS≥à<ÈÜìΩª´:©≠]Ω)iOº’~≈∫Ûıƒºig;=CœÁ<6ﬂ’<U∂Ωé‡C<ô†{=ºùº≠´ëºK	êΩ]WiΩo∑Ωºª˝Ä=É»>Ω˛Nè<—§(ºäﬂgªŸhøΩTÙYªÛ‚<”:Z<µ÷ù<™!ëº'ó<Ï|?Ω`&}<÷Ã<ü¨ı<∑ÈΩ~8¶ºÂî= ≥"<8™V="Å=éÛmº*b†ΩRnΩ8pƒ∫≤ˇÑ:w‰:˙$Ω ãb=üHΩÀª4=g– ª•Îºÿ±Òºxr=M1sº{P<»Z©<∑Çº,Ó»º7L∆;˛ÍÑº∞@ÄΩhìOΩj|a∫ˆôÕ<pÁv<Hnçª€ºqÜM<;7I=rê–<à/?=∂ß€;ºµ<ñxÏªˆ¥<í'RΩ?°Ω:√ªUs<ÒNX;6·Ùºœ$=g∑µ<PMDΩH`πÉàPªjk˜<˙N6Ωä=¡ñ
+=∞HÕ<€hΩ}á%=ƒ^w=iúºM”+=`‹ΩÎ˘<â1ºúîT=∞ÿ=+ªÚ<Ñ‰ªf%º—5
+=–Y:ΩÄê›<™ŸΩh˛ﬁºgJΩõgÜ=?∞∑;é¯‚ºìˇ=3ºc~˛<s9v=áuDªLÆ±<ÿß≤<Ee<ƒ˝ΩBÈΩØj=êˆuº2”öº>˙C=Ê
+=Lw;+;=y≈âªuò<ç#x:iá~ΩQÕ¡:Xf6=˜_Ω∫G Ωy7≥<)}<£0©<∫|=ès=uCÙº-È‡ª8:Û;¡/=°ÕQºb¥VΩìŸ‹ºW´;=P6<+≠ıºgˆ∞=«∏¥<ëœ{<Úq¶ªgÂÂ=X‡º=7ï≥ºÿ™Eº†á”ºG©PΩ¨?1Ω,R<i=0ìw=ÏSªu…√<]®’;4Ω@æ<ﬁ¨ºÖvëº'¨?=ºΩfÿ<lÎ*Ω”π=]bΩ˙9qΩSΩ<◊)≈ºòàºFî˛<ño=àYYΩ‘Á!Ω@ûºø^∂;õcüΩÛMWΩ48ÅΩ•1†<)“%ΩB*è=∆_Æ<m˛˙<YK™Ω’€π)ÑΩ∑äj;UYöºSî;»;‹∏¡πdû¬º„N¸ºÃñA<|≈°=∞“ºÉΩ£›áº®Î	=œ ªµFuªÏÙA=?ßºÂŒ3Ω|èΩD¬áª'FÌ<ü©≤ºÓuÌºÿÑh<îÑœ<µÔ-ΩcX‚ºª˙Qª\6=Ì7äºA3ΩU	º}øﬁª=D=˜}ç=‘-q∫GáØº*‡UΩC"=~,©<ñPFΩ”ò=Ω∏¡£ºÕ√Jºvê™<‡RΩmÔrΩ‡O—º§ºÕœ3ºL∂ì<ø≥<J~†<æ+EºƒË∫ Cº)K9ºñ¥º¬äºÙ‡;°0¯º"+<qƒ€<<‰Ωdƒ<zO2ΩÂ*º˜^◊ª»~=∆ùΩ∫ôâ<ø;¿<mΩOé∆;ôJ8<‡p:ΩΩÒ∑ΩÜ≥ªO mª»1CΩòG)<qH=≤,=ÒÌ<”`¯<⁄aì	b%Ω)!=Ü#7<sl ΩAú<cöº¯f?º	ìΩ˜¥î<›$C<4X6ºÏeá<öJ∞ΩÅË;XV'ºyU!=Æˆ:ΩÍ∂äΩâg'ΩÊ<„Ê˛ºk@yª@$Ω<ŸÙÿºÉû1º§9=Æ=˝∂º«ôöº[≠<}"Ω˚[≥<hJ?ºìu)Ω§¡º8eºêIX=	3ı<ö‘ûºáT=x¢´;?ämΩ“C5=∆	‹ºŒ0®:	B=HUë<«ˇÄ=…˛ ;üo©=r∏ºxÄë<≥7J=˙&{º'=01<·≥†=vπ‰<≠§™=_®X=~DÇ<bRÊº%”Ûª)®AΩ9∏…º¸Ñº7w≠<;˙«<uB≤; Ò;®õ<‰ı»º>’º¶√~ΩFo]=ì‹ºÇΩ=`Ì<_\+=.üù<|Óı<‘Ùª∂à£ºª≈5=iúÅ<ﬁYΩπÜò=ƒ‹∞=õ¯~<·éªä˛<iõ};^à=Ab;æÈÅ; ÅªºgΩr2=Xtº<<ê—< mº#◊º_$ºªôÉΩˇë•Ω±∞Ω)
+¬º^yC=“⁄ˆ<qÉ< ä’ª|Õö;™h<Vñ =Gÿ<é'°Ωù£ˆ<f§k∫{{=¢ÚöΩ&°jº¬Ω‡h=}≈a=É†ºÊ+Ω!ŸõºÕ∫˜ºí€c=ÇíúºCeﬂ<Ô =˘≤\=©˙ÉªŸçÄ<≤
+Æº6∑â<°ª_ºœ82CÌ;,iºPÛΩô”!º¢<º~ùFºñ"8<"'Ω◊ΩuÎ<e’åªÿ€=$
+©=Ó—‚ºaÍΩ>å‹<D“1ª°&<è+∫ªytfº÷Vº{Ô≠ºLVÜ=Jƒ	ºÔŸ<∆?ü;P|ôºQµ,=Ù!<ﬂøÀ<â9{Ωñøu=P*Ω˝#ä;$_=é]ò;÷ãYº&∫=!çê=
+9=0√ª;?q!=Ãù?Ωl 8=Zº;§û<µ‘ ºΩlΩÀçÈºÇE<lÃ˝;◊Öå<x\=ÊΩ©<†¢®ΩÌﬂº}jîº$*Lª„Ö6º©7⁄ºÖèΩáÊ6Ω:…:;ºï(Ωl{Òº√¸.<*éÖº≠ËŒºÊﬁ*<œ‹_ºü∫aªæœâ=Â∑ ;´;9Ω2ÀsΩË
+ÑΩò95ºl«<DNÑº‹Ω[Zù<!Àº≤Ê»=ÿ˝ü<”áõ=√eSªt” ;Uù∫JoM=æﬁì<JÏ<
+Wöºûñ”ª$_D=ÜBåº“ƒZΩ¨Æª;5g0=™¬”<ø∞<©R¡<§”ï<≠ÆΩ"öª<¥Õä<U~ˇºø¬£<±ÓË<¥Ü9º‡Ï:/§*=.!ΩÏN3Ωãº]‘\Ω~euΩf Ωé ßº9˜Ω¢ÈìΩ»±0=,ëº[wÇ<Zı∫w$=µ«=ÄX<≈!í<Ô$#Ω‰= Ω =Ωíßºuh<˚fEº¯´ü<íõ∂<∏_›;+î=nÇï=Eºˆl‹ªheg<õW‘;>˚ºD;°ºì '=7uΩÕn	ºVAWΩ3√9=¡˚º∂Œñº’MEΩí™/=«Ωù≤º◊≠õ∫òˇòºà,Ωc2Èº{Ÿn;Ü7ëº(_ØΩVΩ6h”<tÔº’†Î<ot.=Ï'<‰•ºFúº¿ºΩ¶@OºñòIº"<nªı<…¬ü<˘¨ªø!Ì;'b;f™Íº›¡±;Ëd<jΩw»Z=∆˝ΩRùº3@=fºDΩ[Ë=E•bΩ—á⁄º¯≤tºÂe<Ï2mº∆ıKº£âäªo}=¯wºgy‹<,r=ª¸≤º√ƒ2ΩpV`ΩzˆΩÑ·êº	‰†º∞'Üª#[Ω©õ$=tæ<ìµºì©<™"Aª aVºàòË<!{ÌºÕÁ=ÿ<Ç7º¨l=‡W<óÏº Õ+='≤Ù<û«´Ω‡g%<≤Ç-==h´ΩEq†;ˇå=QΩ…§ˆªNÑ}ºfxÖºd#cΩI4?ΩÆsº*–B<›†eºÁ=ˆ;AîA=àU)<‰∆=S%=úgº ªe√û;AΩ»Ω{3Ã<Ÿ=<”^Ω8˛4=Cí)=Å”á<Ù≤ºkeºöÿΩ≈õΩ˜R<€é‚º*+Ωz 	=m0kΩŸqò;ôç—< ª*ΩŒ_Ω¥$h;∫¿œ<¬IΩ-ˆ*=≈gg=ˆ#0ΩŒ&º0Á<l¨ºI"€ºŒ?_=ìK=[óàºzzsºàÈÀºì¿ºióÀ<Öæ!=ŒÒs=π;Ÿ9¬G:Ñ;•<áß<Io)Ωú^ÙΩ•„é<ovm<ôœì<≠O=P—º√ÂMΩÍX”º0º•P=„Û‹=°7üºØÃ;¡(Ùª	
+o=JMΩÁıΩP∆4=—e≈=º8Ω=∞º`ÿÃ<∏∞=ÌCfº£<~Ü=á‘ı;Y®KΩãj;!öª]:èΩ#∆äºÚ9
+Ωwﬂfºó*ﬂºcØ<	ä]ΩÎ@™ºåQç<YÀZΩTa>=”> <ŸçΩ;£Gªó.Ωi¥w;Ü„dΩB=xãìΩgÑ’<ãoZΩ£¥";g¬´;Á÷ΩhQç=WP˘<Ùº;}PV<òΩj=ùãä<¥/ºfóΩ/YΩÑJíº†v∞<¢Ω‘Û<5Æ;—ÆÅºüJ¥Ωâ“	Ω…@|ºtQAΩv}õ<-˘BºR:ΩÕ∂Ω}M®:Òz›ª€7:wï=≤é-ºÿ^m=ßπº*_;].€<â§ÄªˆgΩ]ÁÅº‰»oºT“Ö<¸ﬂ™<0ÓºQ°=h;€;Q:ã=.
+á;FT6Ω8ÍQΩJÁU<]öΩÅÜà<ÖØù<®Sx<Ï~Ç<!*=∂Pè;ËÒ˝º +ë<Jáº[;nCK;nm ;>Õºõ¢ª<¥Óâ=JYº‰rv=◊§µ<Cu`=† ºqæ€<†ƒ≥º§•ïªyá$ºá3$=T<å™º"ˇ;TQº‹ÿª„)=å¢ñ<˙zC=p¸îºú–<√=Õõ|=7Ó)ºTÕÚ<–M©=ábº<$ˇ}º¿Ω~∂ô<)I≥<r¢üº"¯Í<¥æ4=|Tªﬁ‰µºìH¨<"ZêΩ¥Oº´±ßºHEΩñé"Ω˛†r=ê3=kr“∫ÿ <O˚–∫´Bﬂ<&ˇ&=nÍ8<°ﬁ<ïÕ;¸Ê”ºW 8º˜˜¢Ω‚S=o∏÷ºÓ¥AΩì$è=Rõç<.=bΩÖ8F=iº]==õÛΩ;/ØΩÓ.¢<:‡˜<#Öºx´@;ÎëÉ<˙=ŸJ¢<Œò≤<Ñ≤¶=s∫ªΩIº≠Ö$Ω {3=F”ª~uñΩÊñhªªÑ<vΩ¿|4ΩZw=≠√´ºÚ‡;öù}Ω=:u=ø{Áº¿°;ª>ÈQ; ÒΩÕ`ΩQÚÆºapºfäí<<ÚÑ<GPê;V}=óü‘ª7›˘ª\Öœ∫[à"ºı<i∂íΩê˘Í<–™Ω6k<‹nΩyßïΩäO=‚ﬂ?Ω˝Ôò9G‚àπ 	à=WTËºÓo:Ω©∏ºYW=©≥ΩÁîºª∑•Ω]|∂<∫â	=cY¥<`≈=ºˆ–l=•Ü§ΩU¬ªfmsºq⁄RΩ	º AΩÅé˙ºÈ›ŸºÁú Ω€‰`ΩÓ˝ªÌ∑<M=11◊º˜{Ã<;‚<v%Ω¯˜;»ûà<NπgΩSÃEºˇ¶ìºYîΩnlñ<ìÒ	Ω4ùºjfÀªc/#=r&<ò^ºvÙáªæN9=ÙÕú∫[øΩ3õy<“∏≠<Æ†8=mæL=˝X7ºıa';â_Ω™üc<·4˛<pMΩˆ0dΩàõã<zèh;‘==h—ŒΩ«Ÿïº/ÔGΩ/ÿ8º=yºµæü<¬∫<B>®<`¶óºä˛ª^4Ùº4ôº1Ùªùâ%<¢Wò:ÉèTª—µ’<”="˚!<F‰ºSU≤ºê¢ªºF3=;h;bï∂ºÒ5è<G„ã<<€L;∆º=≈6¢:⁄â±ª§πÌºƒ:xΩ±\Ö<óÆºL¿XºËë<º∂<D∏õ<y¶<∞1l=4"â	Œ2µ<}ü=˝ÿº	7±ºÕhØ<5tŸª•xº1[Ωû=ïM»∫„îªíê–;‡ùÄΩlÕª<éÁËº_JºY ΩâXÌºí?Ω|w¬<`ÓΩÒ@)º≈`è<ÏΩ#ºòz˚<§_ =uVÇ=.'1<Ì!í;j≥<hrBΩ¸Y=zæ∂ªt‘?Ω HΩMR<O
+∞=#1©;ˆîÒªΩyJ=Õ√ºÃ–zºIæÇ<¶ÑΩÖì<,°L= dΩNN˚<0Ó= îá=ñ∞E;Áƒò=ÑÎ0<‹˛;yÇ=Uø∏=–î!>$ˆX<ï◊u=T¢π=YØﬁ<zˆPΩ©–!=EZΩwÜtº©Î•º⁄Ôâ;ö“<ûŒù<+‹õªh|¡ºzE’ªΩ@};˝Î∂º7\ò< ëµ<˛ô;=Ñ∞Å<7í=Áî÷<V7è˜=nÑ'Ω˝ôΩΩ˛‡0Ω2l#Ω>=L[}=i;ªæç´ºZ“º≥Ïêº∏øç=ÿÀÇ:“úéªz=;ôÛ†;ü¥q=’—;XFƒ∫W—ˆ∫õ =º⁄ˆq<KLÌºeΩÙΩWè¨<O]…<ˆ<¥„:◊ﬁ£<|‡öºá◊!=wBP=¨Zﬂ<X"ÅΩÉ<q‡iºÊ…v=ß¶∏Ω‰±ù;`Å=ΩêCÎ<ä:¿<ueåºÙπ©∫8€Ω&&.Ω˝˙…∫›¡º@Ö%º;õ*=å√Æ=óäI;…ø⁄<¥…ºV´»<,Q˛ºy¡;KaΩ…≠aºc#ÏºÔ∆áºu¡RºòcÆ<ùáP<ùo=ﬂrÇºRcò<aCººêı~;…œå=Ùœ<8Áº,Íé<Raæ<^^ƒªwò<{3=∞/£∫˙ÜàΩR…<9æbªE =¯´<Ö*Ωx^ù=<yC=”ƒ<£2zΩxùO=¨ÕTΩ‚™ªõ°<›=Ô@µº&s=<⁄T=S+ª<åiÿª¢M;¨»˜ºÏoºÛöº>^<∫¯9ºÜ≠ÄΩR7ΩEV<0·˚º™ÒÇº=ªÃ≥<’çΩπ˝º‡âºBYãºCàΩpûΩ∏zGΩ˝±¡ºüHÓ;Ìg-ΩJµgº≤≥<¸ª«º#àª 4=2?"ΩUd:B„	=vtª;ïºoIjº–ΩŒÇå;Ü∫Í<cG≥9ZîIΩ”œ√ª*µ‚º‚X≤=ô&eº&=w—°<GsÀ;Õ˜;ZÆA=ü–·<∞‹<˜oΩ˚˜m;ñ-=~ÏcΩFE£ª∑P2ªÆÛ)=»<2$∫∏ºù<˙∂L=È«/Ωg.iº≠<”YP;Dó<±-¿<ùÄ√<`–∑;yeµ<Röºx.Ω_ÌYΩ∆µº<_ëΩq˝Lº ;=|!eºmi˙º—U=.Ω8ePªL*=rF;,£c=Oò<˛i8=±§-Ω'm$Ω7'=yÉΩ$∞4<∞å<¡Ïº.ÿ‚Ω˘ )ΩêbººP$2=Âa=åå£ΩÉnÑΩew;Å~(ΩK¬<∆Çº¥Ó;éÔºûΩfS/;±£óº∑˙«ΩËÁ"=É±¨ΩPc=Lıœ<\ÀΩ-s5ΩZOºq¸≥<¸Ú≥º≈XΩ"ﬂÖº§#ΩßºnΩw∂<da;ΩÕí<¢∆=T_=ä<Ìh‰ºeç◊ºïEQ<Ñ=˛ıºò±<¶a!<Ã—5;;|˚:añÇ=OP∞ΩÑÑ©∏}k=Ñ¢:6¶y= ^CºÈÓ¸<˛à=Ø? ºƒ◊D=H”úΩ•-ΩäT=õà=3&<ªìöô<~ãüºrhëºò3Ÿº`P=£ù∂=soå=ø3∑Ωå¸%ΩVÃÃ<Qå]º‘¸!Ω5¢“<„O‰º¥|v=œûà<ã%eΩÊwˇ<∑pΩá≤AΩÊåΩºÁ˛&Ω(‹`=‡πøº'‹∂<S&Ωè=XéÈ∫ß∂$º≥!ÿª»–·º◊}ª’¬n=V#qº±s/º¥˙£=k≈éª˛/¥ª ] º≥&¶ºªú<0KÔ;œWΩÜ Ñ=‹ùºmÜLΩΩ™Åº—…º]-ò<zÈ±π¶ùJª∂4=¨TÕ<7UΩïK=yÊF:G+<Ÿ–/<^"ê<äÉΩ˘˚„<´1?∫4¶Qº2íΩv√¬<∑Fº•ˇÜ<@Åùª÷}⁄ºî"ôº¥ÉÅºSDœºâmçΩæ…=—ç<Ô√4Ωd].<˜˜·<Ïà-<kÏØº{f∏;;GPΩ¶q)=)t2<[Z<ƒ‚ºHBèºÿp¨º}%3º5fÓ<>˜ï<Uíh∫∂mpΩSÈªÅÔ<‚ΩC’/=!˙}Ω~ª{<o=íÏΩ!ù!=Õm\ΩæÓ„<„˙ª[Œ¨<3..=|ü”<·Ç$Ω– 7º®Håª¨éìΩ¶—Æº-†Q=1c˚<G†<Kﬂ"Ω⁄ò	=W]UªˇÉ<‹.-=£ÁÒπ˚>n=Øºuæ-; §<UIΩIúº√¶Gª8êaΩ;7tºÔ<nBΩ	í6=ﬁøö<…πº¥=Íg=ƒ`%ΩŒ=£YΩ∏bºÂ¡ÅΩÀ8≈<’∏∑º+¯≠<P£Ωû&+<·"<æıﬂ<wYa=B23<@°†ª~.ª⁄›KΩ⁄ÈTºà6¢<©Oºâ¡[ΩÏêΩr…:úYΩ≈óº±3
+<¬9˘ºv÷ªˆÄóΩ∞m ºÀ¨É;ÙZ<Î.<ÃzΩÑ§ΩW#ΩqΩ:ºK…=<ç=]x4; lG<ŸH@=$	ΩŸ7c=W¿<,rtΩÀò¢ΩÇúï<lfºàsM;˚§Ã<)≈“º≈1¢;ìŸØ<K€Ò;|a&=î#eΩ…Zº-öç=»2r;|ÇÍªj≥E<Wé˝<HA˚<ù-=x…v<ìYRΩ"G<"R…º_<:ΩnûﬁªÌML<ÿ4n<àzâ<AY+<ƒUΩ∏ím=∂ë=Û√Û;6Œº>«Ñ=áˆ=rùªÛ!Ó;ßÆû<ÁF<∆C†º^+0=àT=∞‹ΩH∏≥<3	d=!∂≈<ﬁ'º|å$=W»á<,.<ïs_=]‚ã=„°:Ò®ºå¸Rºö}úª·º∑Ö÷ªØ_¿<Ï˝—<Nè¡º™˛=@ ˘ºq¥AΩäÙ«º©MPº∂@ºÂ™âºq"Ωƒ@=i¡8ºãeÔπÉ¿[=/\¶º"i∞<ﬂO6<yıpΩ`≈=j/º PØ;2=êΩ:Ç•ººEç=ö˜ﬁ9¥,Ω£Ua=†ìc<π˛ÇΩ¶~LªõYºwﬂ±<7ü;∆èyΩ∫¬˝ª9ü Ωr<?Œ;◊I4ΩU =ﬁ‘ÃªOjn<”=
+@AΩ≠˝F=é <Ñ©É<ôây∫O@&Ω~íuºâMª<é¯<$o<Ω·…=ÍÚJ=Ï=räΩW.´<B"=¯Ä“ºe;L<›@ªh¶ΩÛ≠%º¨ƒ=˚ﬁéª˝€—<ç‚º;€%ºáù=üM®;BÄΩ+!ΩÈ‚S;´±ªÚø¥ΩŸ@9=ˆ!:O”∑=˛ZΩ\´ΩjŒªC˜<Ê2ÕΩ´É <C™À=†&º?.<wÖ£<_‡¸ºóéTΩ.≈;Æº‰ªåÖ=ΩÜµª∂§ô<hû Ωﬂ2Ê;[UΩ√K—<Ào©ªVˇº]ÏeΩª˙ªö-Ç<ÑDΩ∫¶Ωi˙à;&Dzº<2µ=F\’<,Õ∫‚«=<¬í<∏BΩ˘‚ï;¯Í€ªhp˚ºpÇπ@l∑ºŸº˙P—<u(vºE7ﬁº∂lóª–¥<K€iΩ≥Æº<èPºüxL<)˚˙ª«Iº¯ˇ=ÀWΩßÊô<∑“Ä=¥Õl=Á∂ÅΩmä;˝|<é6<¥—ºŸ¡Ωﬁ©Tº(«ò:;a,º∞xXΩ-°øªÙÜ<M8∞<¿È,ªåîÀºiBf<ªóõ=µZªy,îºäläºBo^ºS¯º±”;2±Ω–uüºx¬‰<>†ªÇ\Ω(•Ï<àﬁÖΩ,íóº´î<k	=úl⁄;y;œ<é a<l∆Ñ<ëø<•’Ç<Sà£<aW»ª¥i˜ºË8—ºÔΩÔˇ<]=vEΩ"	◊ª˛—%=TS4=ÙÉå	«‹ºá>ø<rpΩ‚Âª¯Á’ºÎ«Ø:_8Mº`”+Ω°>”=7gç;!∞Ó:)î¡ªhè4ªo'=ˆÂª•\ÿº≥®∫Ω∂„ƒ;äµº‘AE;¡)=ê'ß;‰ú'=±ˆé='‘y<ìw;ößº‘•∫:åNΩXX3Ω|ÛºjÃó<Ω.2<#ê Ωî9>ºqa⁄;GÚ<Êg6;ävºÕ‘ª‚ÊNº9ù9ΩÏ†<évºÅÈº˜É=b#Y< Rü=ºGX=,‘<=øDΩÅó=—ª¸:¥÷wºvÅΩ ]#=Í÷„=—®</UQ=ÑÒ=ùÂº{âΩ~=Ï=ºµ§Ωø.GºCh±ºØ€S=\3Œ=À"Ω¨“¸º={]Ωo
+V<W∂Â;&údº¶P°Ω¥Ω~=èZΩ/=5Õv=§&A={≥	ΩÄMÁº‚ˇ æÕ`ª‰¶æºúcÅ=Qì=U¥Ω9BÔª∏ªﬁÿº3@x=cˆ;3∑<‚üû<dK…ª"*;ó]dªq5=-˛IºÂ≈Öª¡± :Q˜•ºUuπE„	ºë4x=ùº\π/Rº’!3<õW¶º‘A<… r<Øc∂=ÔÒ<Åºw–¥∫e“⁄<v"=ÇÜΩà‡M=˝# ºH {=áKº|T<˜$<√¢Ω0=T°ºªAﬁáªé<§•=†}=ñ ^<úç=ï)ΩL=ﬂQ<2çè<*!Nº-ª2<µﬁ√πW£∫ºp@˙º’y<◊‹<
+Ë:Lçôº1§ :”cöΩƒxõ<∑Ç=Mï≤ΩÙ≈2ΩÒa<ÔV∆;¬V<6nüªSiΩpÂ¡; x≠Ω◊A»ºcç=!À…º¨™OºÉF±º Ò¢ºÓ∏Ñ<«∆<≈Ó¨Ω™LI=jaΩ±'L<ç$;¥â<R§	Ω§™=°?<›‚¬<Ω*<<—µÆ:´Ó.Ω∂‡∏<]Ó;|9P;4«”;F∂ûºL¢¢ª‹"Ω$¸<2¸ZΩ*Åº¶ºJºmª};{Éº:4ªƒ„^ΩŸriΩ)Ωõæºç¥@ªêmºb º !¡=ÌY.º~u(=*˜ß=…Îƒºì∂ ΩçL =9 ,ºˆë;Oj’ºBÿ1ΩΩ4<+=ªŒMØº¿.ΩÄ∞<8éº,‰_=◊^∫<»&ΩŒt;8¶Úº⁄;1Ω<‘g=s‘nº.Á8øÁºûE<ˇe=#?îº›Ω¥‘Ö<UÀj=‘8éºû≠Ìºsvk<L˙C=Î∏€<-‚éªŸûl<Ô—@9v:ºÕ(;<+„é<‹‘Ω˘∂<@ã{=¡gΩ€4∫º{]º;;Ω''§ºÕZ<Ô0@=Û œªåÇ◊<UyÎ<üMäºp
+D;ª≥,=˜®È∏ÔÜ%;@m =xúØΩì2ÀºÔ Æ<™ÚùΩ Hîº:hΩºÌ\¶<Û…'ºkwÃº´å›º&ˇ =ÿü˚π+¢–ºK±ºi¿∆<:f~º≤2H<]Ãˆ:
+¥g<ÛC’ºFzqΩî˙QΩì˝=P§ΩÙ:iº¬ÁÉΩ±ú<t´ﬂº¸OV;EˇïΩ$G<à[)=5π[<?[>º5=cŸÜºùuﬂºMlÍ<∏©°º˙†◊;r@{:È˜ª∂9p=˙≥K;JM0ºÊ∫∫KÏÉ=785=nŒ‚ºÔL=EIº”¿2ΩÙöΩÅÑΩ5nŸ<nÜU=.ﬂ©º‰üI<∂ÌÙπpëŸ<ëÖ=};^% =â°˚ª?Ω2Ω˜∆æ<#ƒ˙;çm?<åYò;&Ó…<:Íá<5]àΩ,^Ã<Sî0<· ∂ºä¶%ΩË<Ï˘¥<˛¬"=∏iΩ
+Ñ<v#à<À´=N˛ú:4ÊΩ;¸=¸≥ºix˛º’&ûªFº¨t=b∞"=µ«ªìeàºÖ‚r=3ÕºÅvÅºπ;î=ı¶}Ω#˘y=’Ã⁄;÷ªs~qººÚn=6…Ωõ5=Ω…çΩ\÷º X¨ºÔ	Â;í>àº]àÑ=ítÄºˆ2;<=;ö∆º\˜≈; =R=[q>Ω‰ÜÀºt“⁄<{{:Ω“&<P¨§;4F'º¯Á8=´zS=ŸΩÍàÉ<5º¡∫.EΩá]ΩÄF=rƒªéT <@^<TúLΩèVòΩMø=eoôºcKéΩAdÉ∫îπé=„=4º˝∏∞<ﬂ›/=T—2ªc&ºÍ—7ΩŒ”¥ºê(I<qT<{Ö‹<°ë;Úé√< ôç∏ß-=Á6`=æ)‹<8iªÄ†VΩ<∫*ºÍÖúºWµé<[ﬁÒºH"ŒΩ"êŸ;)‰ºó;;Ω≤ºv[=„î4Ω#Œ£ºxpº¢Uw<˙H¢=⁄:1ºÎ;\˜Ñº2–ÆºﬂÚóºBg™ºãπ<™†Ü=G<ΩÓh
+=©∏};‰%Ø<HÙ⁄<1W5=u^=⁄ﬁ);í•ïºuW=*˛;πèΩØò7=Œü	Ω˘1sΩFÚ'Ω@1¥=|ÆΩµy¨<6∫Éº®ºMÍΩ≤.=íBÎΩ⁄wi=-√ºÈô'ºƒíäΩv÷Æº*7§Ωâ”ˇ;ïŸeΩK¸¢º;~`ΩÉ[?∫àK8=˚≤X=¯Ç∏ºqo<`cÿ9ÑB~ºó›ºdòı;ïÎ2ºË5·ºF&ßΩî4n<o"Y9®@.ºP•ø:ªëº8ÔΩ?3=º[ª§¢:8:ﬁªë"ΩEk4Ω©áªQN=“=∫]<Úq(º‚ ﬁºÓ=ô=√êïº=N=x*o=q©ΩlÀxΩÈúáªÄ∑º_∞∫©NÇ=ô”8ΩË?=.¨¶Ωoxã=4§˚º∆&ù;∏ª''ô<¶π<-¿‘ºó3s=SËb<÷ˆΩl‚Ω˝pbΩ—…∑Ω˚‚=Ωßàç<¿v‰ª-∑ºﬂï;„bgºﬁ¥<¶t(=øÆfΩd<≠=Ìâ=º[<YÅ¡8hífΩ4NÀ<è∂1ΩôŸŸºà§<Ç‘ì<%Y=Îg∆<“≤T=ñï"ΩIΩà<á¶ºVxñ<ﬂS`Ω8ó=ﬁu<ÁTm;çx∂<\Zï;~R=ΩˆãO:ﬂA<<∆)(ΩU>v<WÒº](=ºî†Ç<7ÏÑ∫#¶º1UÏª_q∂º{∏0Ωû≈GºmΩvÅ9Ωw´∫ŸÌá=Ô¿º4
+0ΩC">;‰àe;ê$<\⁄<MÁ=!Õ»<PK:Ó3Ω31µ;»æÇΩi7=ñÔYΩ©7Ω!œ°<›„ì<∑JΩ{ÅºàﬁºÄy˚∫§;A7}Ω˜¢Ÿ:ƒ¬≠∫©”©ªƒI;7ƒ=ç¨w=öA„ºëã1º¨ö=∞MÌº¶ëº<∫ä;¿±A<◊œ!ºÕÌÇΩ˜ì<œÜ=è…<Ã\ıº™˝Å<≠§e=˘Ê<–~∫Gﬂç=M=*AΩB=S–ûº^\Ω¯≈í;∏«y<—$∆<Ââ<=Y÷æ<óÄ<)Í$Ω`â<f„ˆª¡∏êºèò?º|é<fØRΩQC=sÄ?ºR+º€è<≠ö£º7£≈<Y¶Q<¢E ;ëH<Ó√·=ë’—Ωg‰ºá@›ºÓﬂ</p£Ω›”âª x9Ωkñ <P}Ω;;m=RDê=û-<¶"Ω‡RSΩVî=ﬂ rΩ©ÖƒΩïàü∫[√È<*=
+Ω!—ª¸»Ä<§kº+#=æs=éMõ;Ñt1=,©B<„FΩvÛù<˙*ø<=Œº0Mº‡7ô<Ω#ΩWcÔ<∆œ]º+ÉG;ú`˝<=Y <Ê\Ω"
+zºd†∞ºÖÇ
+=
+-:^£ºo¸¸ª	R“ªosr=ûÁU=îÓ2Ωa\íΩmXº‰πT=œ[Z;#¢†ºX»dº ‘À<£Ááº44ΩÑDèΩ	\4Ω–∆º˙—<m∑∆<ofE=>÷<™GÇ=AXY<ÿ¡:6~Ωg]¥π-Àiªïƒ<‡wºF≥ïΩœ®éª.9ªEΩn
+<æ˘LΩ¸2òº¢î<~ÁL<@&ª∫%g=Ï«§ºˇ;Óº5ë¡<–|<D©ôº”œ„ºøXºëª-;”¿<îﬂVºßY<¶`Óº$‚x<∑W<ø(¢<Vù	Ô∆kº[Æ8=` =zFZΩ≈ÂÖ<~¨´º¢Ãº'ª∫Kg<†∏∫ºÍ]Åº@µÆ<\pΩT1‰<Ñ9ºª8X°º¨LZ<g|™<‚÷SºydÉº—™∏ºâá•ª{K=*òΩgx Ω§ÍÕº¥,!=˚ΩÀø)Ω‰ÂÀ;ª&ΩΩˆ<‚ôÈ<g…ºÄØÿº°  ªz·9˙Ù ;ì¡Œ;\©§=˚DK<=âÜΩ™πÉ<N=˙ï<îÓô<]ª4õ&=•¨Ê<|05=è)<èÎF=≥Ìh=5ËAª¬t◊<˜À=Ω¢>rªüº-Ãù=ñã=ã‚49Mﬂ=”)>;∂,ºÚuìΩº*°∫boä=¢µY<Ç_=¸èÅ<Á[=f6åΩÍ%Ω\C(Ωe;<®V6Ω 2=VÆn=≤V=Õå™º Ô=◊¬
+∫ôu,ΩJn=§ûº:üïº¢®=œ…Ï=DØº%R"ºP‹ç<ãn‹;…ﬁL=Ûhˆ:"1ú<^c~<kßúΩØ =lf<=8‰)=O/Ω≠∏î;8û:‘¿%Ωnø$Ω–*ﬂºÿ{N=…–Ç<è ,ºﬁ*<&n9º∆÷
+ºYi˜<ÜÕ<ú—^º≥Â[Ω˛˛< ÙΩıß=Ö»†Ω–Oº ﬁbº”)<˘á%=ªóΩ™báº®¢Ωó‹ÜªîO•=≤≠º	ÖT<H~*<Ã8Ωl"ΩÜlt=Pïº†0Õ<¢<È:5Ê;˝f‚º'ö¡º≈¶ˇºìy%;Ù⁄ Ω8o<u=Dc≤ºRVº[<Ç°%Ωöﬁ‰∫s;=»S©Ω»sΩåmO< ßæºÇ£ Ωhº‘‘∫<:√<¢cΩn∫=`=û<ã,y<$°ù<v¿—<kZ¢<Ø!ı< ;≤<í‘Â9<3=Æö1Ω›?ºAâ7<µ◊Ê;iëº=∫á=;âR=«?=/ËJΩàk4ΩΩ6Ω <ng0<≤—T<Q[∆<,¬Ù; ;Èâ©;
+∫∑ìº$è¯<⁄X–ºl,õΩjÿåΩÖaÏºØ´´ºÊ'˜πr<Ùª∫º"ΩRwΩO≈;‡Ω≈»Îº$cj=û◊⁄<’ÕŒºˆT_ΩÈ]Ω√-˚º[∑=?Ï=*±Ω,ºåº≈§=Ω§U;
+˛=∫Æ†<iÄΩ†G5=´l<Ñ·(;§~¶º’b"=Å∂oºêÜôºÀÁ§ºH‚<_P¬ªááº˛≈Ÿªì¿<’çΩ–X⁄ºJ^É:Ë=Uó~=ﬂ∑†<ÚI“<=ﬂ∑<=‹ö<Zö<ç<=tgΩŸÃ,º?ˆ.<e∑º≥^CºîòG=LR<DV_Ω£'bΩí}<M∏zΩö¸âºÚò†<s8˛;dèΩêd=`åeª5E~<¿j¸<¿@+=o=ù ºrK<˚„qªù0Ω'ıï=´Ø•ª‡UDΩÇ∫©õΩ(∆’πÆÈêºÀ»(Ω{öä=éDº;ºÀ{Ω	:=b®'º±»‹ªÆπ5ºKA<=Ÿ.eΩP?;¥…lΩÃîeº¢
+ΩxîºË~≠Ω~LΩ–/Áºjı§ºsÍ∫ºj–†<IÜ<44Ωç@Õºè¸⁄ªg9cºhqèº•†x=H°ºª(ºh="f'<‹Ñø∫ÿº•Ÿ4Ωp&º-$=ªK<GΩÎ‹=ÃíΩˆUΩi°˛º«\bΩ°KÇ;ê5=”∂ÇºdFù<qÚÎ<ûŒtºÎÉ=0Ωe(=2ƒüΩIPOªX=ı–;ÔO•º´ºæv"=Ã∫'º‘tººñC>=¬È<Ì#=cçº÷ËlΩèü&Ωç4ª<ŒãΩ‰®ºo˜=nD"=é€¢;ÍÃÅΩ8}<d!ΩÛpcºmPdªE÷;¡%+=Öu,∫g∞¡º€â¸<Fzñº"Èº<\Ó;gÙ =ˆÕìΩê¢,=S|w=<#aΩ(r=ú¯º=#“;÷rÌ<k¡àΩjùô∫ô®§Ω¥ 2=ºNΩª‹Ê<˛–$=+9e§¢<∆À-ºÓë˜<“Ø=≠ˇ◊;¥⁄üºæˇ8º#åÖΩ∂Ë[ª›8¿ºÃΩ¶N¶=õ =wüÑ;÷'B<{I<ù-¬<!öﬁΩhû¿<ÛºˇºØVØº√I;=©>Ωõ∏ºñ∆‚ª∂DΩlõÇΩ„˜ü<∆´ü=:X<ë9=2¬ê=≈ÂØªæ!ÊªºΩ3æº3¸<= Ÿπıa=Û¬˙:–M∏∫‡•XΩ¥‘™<"„ﬂ<ˆΩF=èÑ<Ç==Ωfõº'ªD=CIü<ﬁHÅºBæö›e<PgºÓˇ='º∆aÅ=›©º>	˝º4ÿ;4*Œ<yò¿=ºÕà<ÊŒíº4o˙ºÉÍÅ<
+«MΩgß±<{JºΩ#G=°ÇÕºg¬∫Ë⁄q=X˜Ò<í3=Ú∫ï;_Xj<≈oØ<f≥+ºåPÅ;ÌeÎ<FøòΩó¨ª»Â º√6Ωu÷üΩõÅÍ<kÀΩ'k•=D!¢;⁄MΩÙ`§;¥U«<H÷NΩèüó=Î–€∫Ü%
+=âO¯ºäÎ <g›tΩ¡¸6=ÀDÏº¡UQªnè°ºO €:¡»=¬√~=#ôå;æ≠<ª ºZZ¥9\œ<#CΩ1Ãº≠uΩyÏ<a∫E«ΩπÖΩ•˝;˛.ª¿É¢Ω© IΩG@∆º¨∫úΩïIk<L∫ΩK”òº™BΩ•
+d<fXrª∂∆ªà‹º^óßºàl=„P∑ºÄÜœ<æõ¥=¸êºÎÛºo—ºûåÃºê∏∫r√å=ô§ΩëåÇ=c?-;5Ωü=Åâ·;ˇâ2ΩYXΩ¸&Ω{Â\º*õΩ Ÿ–ºÄ•ö<R:<~?%=ŸPΩïÍ÷ºàáÕº|¢˘<r‹OºÑjΩ9w¥∫Ç˛yºT§L<o`ø<œÇ∑;ªÀ˘<¢…Ì<∞E“<WZM<7ëπc√w<0◊õΩd’dºå©(=ÕÔ4=äE\<§L=”<=/«ºÓÈpª7∫°ª¿'É<yÀΩÇã=†&;á∂=H‡<ÏW˜<c±Á<æ„ª<‡ã´;F 9Ω7eà<W•‰ºt–π⁄O2=q
+=æ_.=áõíº‡Ïzº`ÔêΩ_,uºÔ[πº9±ﬂª∏≈"ΩÏŒ¶=3}º◊EÓºnÚ=œdä∫˚¬<_Q=£ˆÓª6ˆ!º#ªMcuΩÑoªÒósΩ|í=k©˛ª`xZºv˙=º≠Ãπ;∂P‹:ﬂzœº¨Qÿª⁄4™<}ÈÊ;?ÆBΩ#≈D; dë<øΩèïyºàòw<çV=Ñºe¯Æª™?=ÌIΩ;Rˇ<f©åº°Ω<ìº/7ΩÆl.<≥l^=T—<∫~€∫Tì"=¸¯ºqπÿ<±MªiX%=˙›©<q}mΩ[ÒŒ<ÁÎ¶ºë›º§õ ºêD‰:xÃƒ∫oN®=E˜<≠œà<:»®ºBp.ΩV`◊ºOHºV”ß<Ó€<Ê–(ΩÑb=f\¶Ωj=Eû;r≈¶ºBfK<ô»Oº~œ±ººW
+º˛z›=∏L-Ω?˜∆ºn)ΩŒüÍ7Po™Ω√M’<3‰OΩÖì <”¿E<B¥u<·KºM:	<˘√ÿºˇ^Y<™Ÿ
+=ßÚèΩMº¬ºz™éΩAïº˜ÄŒº` „º¥>:<uêº1ıÇ=≈Ìä=Öüuº$Uºˆµ<ñıºjßa<us◊<®™uΩ‹≈ıª—æÉ<·[oºV≥<;Óq°º<≈ï=$\Ù<Ø!∏º[]f<üõ<–êªßQ‚ºÏ‡æ¥DaA=@∂=ƒˆ=˚ﬂΩ-_™Ω	˙EΩÈ™@=p˚p<∏ ºÂk¡ΩÚ]„< ã=\Ö!<»Çºv:*Ω[b;›=>“è<Ωm‹<Z´“<='`=Ä˚;:<¢ïiΩG¯(;–ê¡<Òº†îÃ;YxΩ
+“°ºR¸ª¯ÎÈºûÿ$=!y>Ω∆∫^º¿Ë—<∆®=‰mΩ∫‚ã='e‹;~Õ–ª8m=¥ˆºiÆ*<„Ωˆ.ΩZiºú ∑º÷**:ó«+º˘‚IΩP=Ωb6="4—<œèã	É‘Í;-ﬂß<gO(<[§6ΩD/§; ˚ñ;Á)
+ΩT£∫éÃ>=_ΩÍ;≈ßZπ-Ã¨ºÂ∂@ΩBy.=˝Z¨<z’ ªlçÕ<-&</óº⁄Ö∞ªeC=Ω!°Ω_ïº+}<r˚ı;pè<ü≠o=ET’ºƒW!<	p+ºàΩ∆˛f=˚áD<∏¶›ºpöΩ{Ô"<-@=\¬!;SÇº1≤<OõºPÙôΩ›6=øÛEΩ˜≈=û*›<ky<'¡<äº<Ëíè:8?t<√‰Ã<Ü6?<J˝=îÇÄ<[Øù<ßa> »Ã8á⁄<<—<?=Ø«óª>˛ºÙã'=:‡ôΩÅëΩ·=∞;“í<—:<Ùlq=˛Iº ¬ªIqΩDªf¡ºI∑XºZãÒº•j=~ó=î0pª‹lÏ< ”£=è≤\ºÑùÜº:€#ΩhlR:À˝Ω)¸=ﬁÓÜ=πî∫ºæ–Ωﬂ|∫ºï@¨<`V¿==€Ø:Êf\:z
+´º„hº"¶ı<Û=FTÿº>ıKΩÇR:¨∑<fÒºNŒrΩ—Ω§º[=Ò’V<ÅÕ!=^≠ºÎ.c<ò@Îª¸Î(=JﬁÍ=p∆gª÷A(Ω≠Tå;WGº_=õ=z”≈Ω–:<@∑1ΩáLÂ;üÒºúômΩ`<©ºSAúº≤¿æº,ßë;7ìº™z<W.=ﬁ˝∆∏=≥º5œ¬=]w⁄ºo	<N’à<~T”<˝«ºßGºì3ÜΩ¨.ΩG˛ºb”B=I•_=∏àâºWZ:M±Ω§—ÙªeÚ∑ª£†=C\€<÷›ºKÚ©<ıÙAΩCçÌ<Gï°ºµD4=WjJ=·T?ΩA˙â;ñ2MºﬂƒÒ<PL<Åå∆<öÓ!=CLE<S«º[Ω¸Óh=4†íΩ;∏„ºW^=†âÂ<2∞≈ºóYÀ<ı Ë<§Â;±^a<p4tΩƒˇΩêûi<–∆=‰Û<%1ª"…<∆äºû¿H<y¡<\fºüﬂ∫ﬁe"Ω~¡&Ω-$oºQ_œºŒ¿?ΩKﬂ÷<„i‹;˜A¿ºKrﬂº7F'ª£ˇÔº1ú“ºèn^='u™º£Ogº„c8={J‘ºúÍ∞º7¢n=!u˚∫53®;ÊX<çSdΩF•Ÿ<Óùâ<÷HóºyÄΩV≠< =HC<ﬁòÅ;F‰G=ö+<ˇÕ<≠ÖœºÓ<QSﬂ<“ûΩN«;÷◊¢<—ΩMΩe1c<3ˆ;ÀÿÉ=‡Lz<-ÆΩÖ∆<’t=√:÷<)ŒA<™ãE=˙s;NÌ‡º¯≥àª≥>=<Î∞ºsÃ=Ë=5%äΩu±õΩ1ƒ=BrRΩñıQΩ¶¢OΩ4z<}ºŒaA=PÏ	ªÂ⁄<X¨˙<GÇO; 	‘<Î®îºáÀ<”ï=ΩÅ(Ω”1=“HÕª»(K<ÍÂôºså.Ωp2ΩºbΩ%ç<úæí=*(¬ºÅ	úª6ﬁΩ‰I=B€´º[M;o◊ßºíé¶<—ödΩÚX+<∑≥çΩ<c¢;P
+ΩiWº˘Ñ»ΩÓbí;\ÇΩ“Œ;iyù;˚–Q=*˛±;Oıç;˚KÏ;¨ÂH<°´Ωò3Ω‡-(=ˇ¨ÔºÏÚÎ;»ù=Q“<ÕΩ<uIœ;5—ÌºÓ™Ω'jà=Íπz<Ò√zΩYzﬁº¡§¸º“ÿÂºB`=“zΩs8´<€ä!ªù6º)Œ ºuı∏jçkº?∫w=ódß<= =ÕñI<≈˝º4VÉ;]¥ÿ<`k-ª#«P<Î<â‰á<E¿ZΩÍ0a<πﬁËºΩ%.º≈≥üª ±◊ºn`XΩÍU‹<ÿ#n∫>Ω7Òøº/Ò<¸=éª˚h¢ªåÿºˆˇΩ»$ô=O’Ω0Öµº”ÕÏ<8`£=øç∑º2‰=d˙>;Ê`À9_à¸;L`Ü=„ÍÊºÛLq<äG=≤Ö;ãˆ*=≤«±=ùE=hﬁº≠º6#=årpΩöêÅ=H™üºi=/>=H≠è=Û≥»9MpG<Y<Ò4á<AÒÚº^¢◊ªÑ÷}<É‚·Ω•sØº⁄çÒ;E¬∏ºÄoã=R™ä=|„Õº§J=íœn=⁄º%Ωz2Ω≠—º<9/<2«;üHn=ÈJΩ"RRΩn[˛∫)¡⁄º *ΩPgﬁ<>¶ó;KºVJ=?Ã/=§∏pº„‹Nºµ’SΩæu‚ºjÊûºÀÌ<c`∫<_e=5!ÅπqíºL/"º´√ªö7!=cd—º?Kˆº∑¡“π}ã=1Ae=j›ΩX¿áΩÅ{Ÿº{™í<çî=na =kf= dD<Øæº-´éº.é<ØªZ=¡Xv<¬Ωªgí='Ù ΩØΩ√ß=6•≈;‡ën=Ã;{"o<Æ¿2;ıA◊ªIt≠<b`]<˝£¸;Çy=]5âºxûÈ∫∑Q¶<çX¸º ª<vR!ΩÙŒÎºYÄËº≠ﬁÑ=}4…º.†j=ΩlU∫ ÒΩ˘
+Ω©∫ú;;◊∞ªÌzƒ<)Ë†Ω§∑<˘`8ºë«8=[É4Ω“ÍY=&=<v_Ï<⁄|Ù<sê9ºZã={.;Ø(sº/L=Zì≥<µRΩßb<<9‚º?XKºEÁºÛ8¡ºu˜='l≠<ø{ÆªU√ªs˜ºˆTΩ§OΩdaΩRVã;@Ÿ5Ωp£2Ωùv;H8˚<ÎnÄªU˛ºCô¶<áI◊ºj´—∫"èU=ıZù∫iÇ¬;Ñƒ=$G1<h€Ω Á:Œº˝ºDºz7°=ÏÏΩNé=ú≠ÑΩˇ…a=®5SΩˆÆõºŸ”<É ΩøQäº¥@3Ωqîº≈Âf=∫Ìº–rﬂªQ˝Ω˜‡&º’1FΩ=ÿ<6≤dº√™\Ω¿Ÿ:¨+∂º´ÆÂ<◊îŒ;”*º< Ú<VDú=uëπ`’ÇªË≤≤ºÃèyº8Ø¥ºôü∫;¿≈<¢Ù°∫Uõ%Ω<OS<  k;r≠úºÅÀ
+=jŒ77√ﬂ®<köΩ‚à=0(O<S,=yú<ø–üºG^ª =ÁÔô<œçΩf˛éº≈üº˙e‚<°r'=lªPºX¡;™ùΩbﬂñ<:ØmΩ∂iä∫Ωƒb<IƒÅΩ
+äºª1Øk=™LΩÃ°Ω…vìºÿ¯<™)I=⁄ÕQ;7;u«Bºk”µ;ÕÆ{ºãÑXªf∞úºïÜ;XÅ‡ºv.'Ωt*=jA;ﬂ:ºÚt∆ºìﬁ\ª`êµ<çÇë<qñJΩÂ˛íªÑ|©=ÎŒ%ΩÒ&=FÙ2ºÚe=E˙ºgr®<TÇºÓ«õΩºö=ˇˇΩK ∫N=)º,äçº^j®º?9p=2sÇ<€¬Ω@u†ªºS&<˜R~=7:ì<É÷bºyi='XpΩ|Á’=∞ãª‚{´ª)µ˜ºUÖ-<P„"Ω[˜Ë<`ò.=e=ãã‘ª˜wJ==|tå;˙Ü;;r;›ªc∂º1à ∏D6áΩq™=ø◊ºÿKyº´U=øcsº¸"J<∞≠7Ω|‚≠=\ÁlΩnoÓª—xΩxKä<8.Ω}⁄¡<Kk}Ωmè=πò;R±<g∫7=˝æ≠ºùW
+<èÇå;¿µ£Ω ¸º´/ΩkéØª îºmo)=66êºÁGΩP:ª¬ó=lV…ºY∏C=˚Q”º»ΩËY º ∏<zzLΩßpÈ<R#˝πWŒΩÂ=»<	æuºê<˘j<0‚é="O∫º∞cºº :ú∏4=·<%<Ê¯âºiÄ+Ωå≈ëº)tG=Ú;ÒπŸ{“∫ñZΩÓ√LΩÕ:y=0î’<éæΩQ≠§ºõö∫<©=6º∑%2ºI…ΩSïWº3˛∏<_hq=∞kõ<A¢®<	[MΩvù*=Ê!<x´ ºÊ»ΩqmºÇºx<Bo<∑YØ∫…P∞ΩºíΩÏ'ôΩAﬁ?Ω~Ìºt∑P<¶8≈<·dº=R<]´=ºg‡h=ò“&< À;÷r=≈C<'8®∫üLhΩ∏ÙB<JúåΩ‡≈<y‹[∫èü/=J∞*Ω)ú)<+ì¯ºö†I<—vá	h<ºó]«=(ÛΩ¸„¬ΩÚ3=ßΩÜ:;Ω†"ºª∂“•ªÒ€ºôzêΩXØàºí8ΩÙm=Ùµ<(Â;ªDÀ—<¸û+=yYÎª·[Eº¿öΩÇt;¥&<ó€…ªìΩéüºzπ~=/Ω"YÏ;.™Íª`ºÆu =3Áº≤£∫≠AΩ	ﬁÜΩïtË<Kc¯;®|óºÀíL=bÜQ;l*EΩ<nH=äˇ∫±Ëß:àﬂ@<G:<ıÜ∫:¡+=`ªã;P‘†<ñ;S¡ªp–ºπ(7ˆ=˘)Ê9—>†’º˙'=vÓ<˙w=ñÇ<Õh”<˘◊FΩ÷îº⁄≥˝ºwáã=ﬁsÉ<®h/ª˘|=ºa7ºà3*ΩB4e<{ßª1⁄’;ˇﬁ–Ω¥8ª<hˆ/;Iã=`vÃ<åjs=¨pr<4<Ö9ﬂm€<Á≥NΩ˙ÿ<ÄÅY=âªöΩ‚O≥<oCÙ∫√—[;6,œ<åí:Çˇ≤ºDÉΩƒ'_<ﬁ∂#=3n	ºœ ºúWj<œP7<ı]<∆¸3ºÁk;ΩîKΩz%w=æd<€≥:=Uiî:Ú*È:@˙3<$8˚;g∫<=à˜Œ<»8Äº…ΩÅªû˚?ºêå=VúπΩ©´ÄΩ`f√º˚Xä<˚O÷<ùX.º«‹∏ª…˛÷ºb&ΩJ∫…º0üç;§È =È˙œ<fΩΩ0«tªêH∂=w{º∞a†;ëÄÙ<ó#=Y8ƒó:Ω∂ûº„ª);7TΩ⁄±=Ωu[=4~Ωé6‰<zΩzñ<ÏµpΩ0SY<ﬁﬂV;˛∑£º°ˆ^<Ä4Ωr—ôªHLD=@ık<Æ⁄<ÅDΩN3k=L#®ª¥e¿;[ƒV=,/<xºªo–=<∑‰ºìh˙;∂ûw=ŸzΩÂå˚<6ë=F§ª(Å2ºÀ@E=ø´+=Äë›<IkΩﬂ·¶ΩÊ´xºôùt=1`<È7K=±ˇi;Ü<¡ØºCp…ºsÈº{ΩÁ∫zùÄΩüzÑ8ZΩ3Ω⁄3ƒ<¡™√Ω6Ü<D–Øº⁄˙8º©äº0”ª
+y
+º"_Ω⁄¡ =õ8Ω!%;∆ºΩh.=6e˝ºuyö<y∆3∫Óá∆;t”=“k∞ºêû?Ω8ºP™Õº∂ºÊ“í<Å.â=›ƒEΩû?ÉºÀçªI¸Ÿº E=ôv«;∞Y◊<*“Ú;≈Úù:I¯º ™±º{ù1Ωüâº|98ªa<∞ÙF=vƒÇ=<=vê(=èîÜ<Ë<ˆYiªbJ=TnÜ;OZÍ;·[UΩé∏|;†Ü<Ó>≥;œã<÷hÜΩÔ≠åΩË-=ÌÏzΩ+dëº°¨¶:A==y±cΩÀõ†=è±Á8›
+_;J“*=òz∫ºïI=È?·ºYoq=≥¬ª$OAºçˆºGá‰;Ÿ
+Eº—Xº¡å˛;œ û<„õèªOõΩÓÌ[<Å˙àΩŸ◊ü∫å$∑º’lò=»§ªΩ¨KΩØâ¨<Ãsƒ<Ñ¢æªﬂÙòªòìäΩ5_/Ωt$Ω∆W<ô
+ºΩ¶Ñ[<ãKΩ√QÉºâ¡ØºJèºı
+˝<pÄìº‹qÉº5˜<K·
+<∫¥º±3}=g©"<U4®<Mé∫ïç‹∫¯¶;˚]Çºv_ü<4O\<¸Tç<M»<€,CªÖa;˘º—áqΩ∏jΩÄÉº2éº‰ÎΩ;ì8yºΩD%=°∫=Ω*‘:QÍE=è	Ω·1T=Hz÷<jêºUÎr:y/<BÑºµºõ<:]=‚geº=√7Ωº,>=wZœ<ZN±º$ŸÃº»º£;J«ºíÕ==X«~Ω§úáº>Xp=ù°;9j©ºû7ΩôtB:ëº®m<ád(;n@á<G=ç=í)=M:í;≤[5=É®ª<”.Ω¸ëÉº„Ö<âeäΩ˙$=ˆô;ÎoIΩﬂä<∂ı=o◊fºåçF=⁄≥∞ΩÇ' </hNΩ ãr=iÖk<Wº<√‡,={Ôı<éÃa;—∏àºù_÷<tt=ë
+(Ω£óÂºí+ΩÖâëΩWº “à<r»øº®’Ö=#>=”.c;‰«&Ωvxõ:¥≤Ö;∏wªΩLÜ›<ÒÖ–º˙~»ºoa<¡ºeΩo◊Ã∫AMTΩÁë+Ωf£ôº|'‘<"òW<Ê¸@Ω∞ã=¨ÖeΩSôâºö⁄#Ω“ Ω‰˚‘;\˝˘ªP;>=_;√<—=˜ªOΩkaÀªÇî™<;÷æ<ÑMãºË¸$Ω?|¥;Èπ¶<|˘=E“=”ƒΩZØÌºíP˘∫„Ù=ú≤	Ω›xí=]ãfº„5ΩíìΩ¥;6<.ä=ﬁº=–óºÃÏ‰;ôﬂÍª≠≈êª≥k&=Æ¸D<‚….=Ÿ:º.|'=YÉ=LÄ≠<.—>=∂+ºº9≤º[<tù±;aΩü<ei<–÷LΩÀ*º4ºF4Ò:˛ÙwΩáò=={Ωé©òº'Ûº£ËZΩ$¡ﬂº≥åï;y,JΩR¶˝<viiº^o=e;Ω:ø+<Öt§Ω◊‰,=ˆ‘ËºÛ“›º8‹RΩäk∫^x¶=S!Z=n“òºÓâ<qΩvù∂<z/≤;¡Úµº˜?ΩŒ5©ΩPlΩße=˜+âºôRb;AªÑ4ìº–OΩªVSΩÏﬁªﬁÇΩ–ißª»!Ω¡|–º∞¯;ÉçFº{'è<±I;"˚éΩízº{\M=∫‡;uÉ‹;Í™=Í€9Ω¿-¢Ω*ºÿÜÂ;ªâÇºòy-=íüïΩÔ©n==êÑΩ(H=i§ ºÍ˙˘ºSΩÛfiº¡óª:^º5FÅ=‰u=Æ#WΩUPÇº„Z=ΩZ∫_ΩúIÉΩiÍ"ºí<=E√º}öJ<	iîº¨r ªñÌª:Iø;D˘J=µ{/=CgÏ:·S£<e Èº†Ω±;Ω„W<dˇáº∏>2ºrB∏ºAæ÷<b¡Ñ<¨qΩ∆=æõÔº≥=Ã¬ΩµŸ¢º	Ì§º´œ<f$=—π<©k≥;?˙[∫j‰ï;≤˝	ΩÁ˘<cÉº+W¢<ﬁ=ï˝)º¢1k;£s"<πÇΩ]Ëcº=µº_√Ìª&1Ω!ô∞ºµwá= M|;ô¨“ºM>´;t∏∂º1—<0<Û;◊˘<,Óéº∞è =¯õUΩ°7Ñ<NgJΩÍò<@’º®ëdªö©.;∆Rn;≈dkºM+<–pü<1ı:ƒ÷=Ô™äΩlgåª√B=óøΩÀJŒºU"⁄<'w"=%_≥ºR∞dºº©:òEÉΩ¯ºå<,E:ªÌª|»ªÖäº∆F°<ÂˆQ<‚˝;\(=æ«ª4∞Å=Î¢<ãGJ=1πœ;"◊< yùΩ∑A=ZvÜ<Á‘¥<&¬Rº·'µºØΩ];ä®[=LB*:<˚∆:ºÚ=´rR<,4†∫"zMªtºW;Ÿ…ƒº÷ë·<∞cÅΩ¡±=z∂<›L=Ö/Ω<õz;äú.<{Û÷ª>∑=¥sÉΩ0€Œ<îÕ⁄ºmXé<GÕÁΩu º óRΩ≥Éª~∆´∫⁄ÂØ<Å:î<Î+®< lE<»˛⁄º˚l)º)¥„ºû0ùΩ∞ÙgºÙ±å∫˝¶Ωéﬂó<6≥ª∫‹‡∫Û°â<®z.==≥®º^ªÑºW=(ïº0HL=vÕ ==SΩ"#Àº€wº¿‹ºRìD<ıGº)2¨;ıEy;;=Bì	ΩÊàôª™∫=Hm<ÈW%º"/†Ω√”Êπ;∞ºÇô=÷ø4=o}õªüêΩbeΩ-àó=ÄS<∏ßº^ıºº\+0=ˇ.=
+˘iΩ"µΩ˚çΩËÆÉ<é“=Iñä<{¥ºC„=Ër=ˆb<2Éç;ëJΩ‰E ;úwã<4a!ºî]ã<.Å§ΩIv∏ºπ<]BΩÂ@]</J,ΩE-!Ωlú=o›=#gºJ(=X›< hªH=ˇ º¸ƒª%ΩôHMº“vPΩG`=GÉº…√ø<CFÙº±í=GFªèÎv=Òîç	_t;§>^$=FH«ªÔ 7<ëŒ?ºiíãºÎ5)Ω¡˙e= áÕ<l&úºÙZo;˛™5Ω˘îO=∏s¢< nÖºTFLªIZﬂ<&~ßª3˝ã<>ØΩÊMΩ›É$<Úè≠<j)£<•Ã:`î$=¿»Öºp«Lºm∏ÖªœAΩ◊ƒ¨=ƒá»;,DΩ±yΩñ	ΩDL=öë<vuº% \=q›Ôªsq~ΩZdá=úbI;¯ÿ<A‚<‚ëˇ<e∑Ú;•pÙ<˚º“≥<Éà=Ω‡<{;=ìå7=Y <ºÄ˛>Ûúùª@™$=ô¸ø=‰ªõ<±·<g$^=œºèÅ°º&`®:A>=hdºá"„<ì«+=Gü¥ºöh#Ω4º3ΩSelºUÄªÉóZ={⁄ﬂ<œì∆ª4¢¬;Mb9=óKOºüÁVºí%ú=õÌF<KvΩ‹Ôd=O>=T—ºÓÎáºÉÛº}ﬂR;Ä…‡=TG:¯>∫∫‡µ<:ó'ΩàQ—; Ì*=¡˜ã<Ø›º˜±†º˜Ly<ªy%Ω◊çÉΩÑ∫ÉΩ|=ËÑN=Æí";≥3•< ==!¨"Ω€\T=wÄL=(œ‘º÷L“º	Â<ú
+Ω∏÷_=‰óΩ$ø	ªı®ºÃR∂ªoﬁò;…æ`Ω2õiºˇÜΩMò¿º·O=®ªWº è1=·z÷<îΩÉ·ºÕ:=“ 9ºÌâ	<S(ªπ±(=Bõ%=8x–;lÃ≠Ω	≥-º∏IâºÀAK=0Ã#=wï≤<Ár˜9v -<`(‚<ñ‘9ªuÀ=*ä*Ω–.ΩG$=©‡ºØ¥&º3pC<¿‰3=Ì∑	=”kÎºÜâ&=É?ºŒπ8<–˜;Ô©ö<<Ÿ<Òä=D!=ë;Ωd˘ı<ôdpΩ»0Oºnå<6ºQ=‚÷µ<hy‘<vÀÜ:¸Ì7=7ÓMΩÉ÷UΩ–%º∆ÙΩºL<ı%=¥L%ºFÆR<–‚Ω@j‡∫)å+ºÚ∏öπ^†¬<√÷çºOÒvΩ˙òAΩ«‚ëΩ¥pΩa:=rΩ˘·g<h6Ω≥õïªÔÎÍº≥vºº|d=æOº7$4ºYLº‘∆îπtºöV=—*J:q⁄ˆº∆çºH√‡º≥:’ºú¢Î<Rçº∫6Ω[åïºÙ-=âQ¢<ﬂ—Òª"Õ<CÀO=1kπ<Ô9ªT<ÚãÌ;6\º∞ıÔºËã=SªbªÕy°Ωﬂ==˙<Æ_=¶™ã=¨≥ºÛ±ÿº≤6Ò;Óî<æñÜ;w´ªÄuâº÷bØº¥3sª·&»;Ä4˜ºπv=Ûı<+|ΩﬂLuΩÑ≥ª",w;öÎíΩ^ôN=RÎ=’ê©º+à=›Bÿº≈Ç¯<Çæ<B†%=ﬁâ<eB:-ñ=CÁÃªo}‰ºB¬m=∞ù‡ºt¬º}ÈΩp≤Eº–WçΩ@;5º£Ì¬º≤|=‘≥ËªªpﬂºÔçGΩıM_=QXbΩ;ºõkëºAÓÒ<gEµºG÷ºÍΩ“ƒºñKyΩ;∂‚ªÆEΩQ∆9«IΩîmΩè6ΩøôÒºΩr0=E»…<‚Õº —®<,R==X=ªˇì4=æ÷”º/4B< |:<çª=•0=(/¬º˚UΩ~>K;\º“;U4ã<O&¶Ω± =Ë‘ º√D*Ω™¢Ω9Öº@¸ı;JJÛ;)Ö4ªª=#XÅ;z˘≈ºÈEf=
+WΩ¢µ¡<ûß
+ΩOêº€Û<:ÄO=Êñ;ÍØ«<Ê4=(≠û:„A÷º«–<¨íO<3é<˝mRΩ®è∆ºÏÊ∫Cæ;øΩ	ΩåÚòº¶tB<Æö<2eÌª®òΩ4yü<œ≠ΩÚ¿LΩ]∑Åº¯V<&òà<PuΩ◊áÜΩú>Ñ=íXÂ:,ÈºnΩ{ΩÉ=ÊB?Ω∂∑À<2i=;pº“Üﬂº> >∏?ª4R£;L∫º√ÿ·<rèïº cÄ;øëë∫îö<n”<≈´¨ºáœ<<iÁ)<Ù}O=áûûª”rO<Øı;â_æºó¨í;JÏºÜA;<ü1∫=ù—)=–∞≤ºÿ¿‚ª]ûºÏ˝’<≈f™Ω%D=üÙ<ZbTΩîµ<3≠ºÖazΩy,=¸yΩ=n˝ºæ
+=ﬂ`”∫*àÃªéQ≤<^}´=K:“ºõRΩÉ_Ω7aKΩ˙@ÿ</k <6±¸;+ãiºrıª´x4ª≠Õ∑º;°ñ<Müü<C"Gº3ÅéΩÛY ºWÏÙ<û˘=í∫5=Aé°Ωñœï<º;î<„=ïŒdº!f=áŸ÷º{eΩºU“:è¨∆<™=ÒVºÑ¸ººn;˚HÅ∫3˙#ºgF=xˆ0=çü=ëº?;l§	<f∏<
+6;?T∂ºp<-#,<$º«<¬V<·Ò„ºÀÅ<é’Èº 9<s˙J=≠TΩQ|⁄º(˛ß=ıºΩg%=C±≠;ÉºLz;º«†r<ëæ¨Ω•† <äA>Ωã]÷<cﬁHΩbøº/ÖΩÑ+=µΩa‚ºçºÈAUºûãS=∆=≤-«<Sçu=‚HΩ_ÀΩÈüºuáº/ó´º`"Wºà˝˘;…i=ñ¯5=1ô,<c`=ØH Ω2eΩÈhΩ‘Ëùº‰ûeΩÜG˛<w™YΩâ“EΩãºö;≠T´<‘⁄ﬁ<Ìd$=Ê#?Ω‚Ôﬂ<Ö©O=|Nù;@=¢ﬂ=≤<;mΩ4teΩ?ÑâΩ˚§ä<i^—<âΩäò@=efêºøó=âs‡ª’7$Ω í˘ªx¸Ÿ<ÉVµº÷ê˘<sµõ<˝î=ˆTΩöXa<ô∆ΩuáÔºËpΩ÷ÇºÑKLª≤KºÃËáº*úÚº"V#=^ìÔ<g¯ºN=˚d“<=>wΩÜ‹µ;¶ñ∆º»◊Y;ràΩa oº‰~ƒ;#¢ΩÅBZª#π|=|t◊<x∫ÄΩ+|=¬=˜ï]=„\œº«–:=3É<˝tæª[=ä8éªk±¯<dv†<ˇΩíSΩ|O≤<sΩ5%∫K)=£ÁÆº7ÇÉ<eSéºƒjºû˘ÒºX≥Üº /YΩç£'Ω¥°^ºP˛≤=Ób;Ü^±;Mé,<äË]ºhO=Éﬁ<√Ìªi˚ ºÚ*sº8Hº…:‰XΩO2=ñ {Ωs‹<©†#∫`fªê¿º˜qΩŸ¸P<‰Qß∫;˘ÿª@ªÉΩ†L<¨0=ˇ¢JΩµﬂòºÖ=jpc<ÚüΩ P±ºñﬂP='…º{“;±] ;∂bµ<‚Õ0<Æ‚Ω2M<˘ø9=ƒåé<®îMΩ&S=®ñI=›<;0T}=Kwt=ë≠<·(›ª∏c†<(º|’¯ººãª%Q=Ñº`Zˇ<ÉVπ<% ®ºË6Ω˛€É<Éoªº‘¸T<ê°„<Û|g<ámØΩç92=¶º3º¡ó = WΩÍˇBΩZçà<ÓÀ<«öΩì¥ºLﬁ=ª≠7ΩD;ªª‘Àóº•ô∫è¶ΩÚã…;OÈΩºÕ<éc¶<ˇ⁄=ñ(Úºl!À<ÔR†;8_Æ∫fAè<zÛΩÜóUΩÜ)
+Ω”∫=VGt<™H±;…º<Á“zªP&=.=“˜ºw]_=#ŸF<ÛŒlΩÜÑ:}£Œ<j
+ªL˘ºÀÑíªU»OΩ‰ôí;.Áª
+:ºñe<^A≈;ÎRÅΩñ¡{ºﬁ=S=„j<\	ö:≈JΩµ˙;¢å:Ωª7´=ë=ÿ<-lüΩª–º≥ZO<Òë:"jvº+ªê≈πS,—<{gŒºl⁄êΩEîΩ Ω;á„«ª1>=„?Ω∏<Z<µc^ªåæÂ<•
+úº¥g Ω2*w<tâ<+(=ˆôº˜O∫Ωu'Ωªâ-ΩXR>Ωa €<	§Øªÿ˙WΩ¨˚√<”‚<gëäº≠]=J„H:K¬éºÁ~¿<¯FØ<Gÿ$ªN¢,ª“‡õªÈ†/Ω;tX=á;âª+,*ªBHΩÌ≥6ªíŒﬁº¨ÓΩº¢˝¢	J)èºõƒØ=Jn¢<Öìü<ËÜñ<Ω%
+Ω>&BΩï=ü‰µ<ç<ΩΩ+@hªE(Ωî<bº¢ˇ;F£lºê`<Æ¯’ªr,ü<ºé„ºL&Ωhcº˙Ï<>A=qÏ<Æq=&Pq;˝Z=mƒº≥ñŸºØ/=¶ó4<¢∞∫S∆ΩT<iª»bb<Ò ª¯øç<“rû=Í<ïºk?}Ωa|Ü=;-ºÁeªØÒ(=Ÿ<æ+å=;É≥<1aRº˘wººÀﬁàº6sù<x£d< uÍºπ5<‚#>X8Zº[»ü=paº=ö:º„sJ<«·:êTÑº-“ªWÿª0°k=`∂´<≈ç"=E†∏<√ø"Ω∑k:ΩòÔ∞ªKÍ/º}Óº≤∑_Ω	ﬂo=’¿ªèh<±K%:∫Ë=&\∞ºµê©Ω<∫Ò;‹ı
+ºêPD<ü∏µ=´õ=˚IÈºdÅe<óµâº)√Pªúà+=ºÕ¬:îxÔ;&´8ÑùZΩ7Í‰<√2J<qöx<§übΩ…¯Äº£÷ì<µ'éΩÙaÉΩxÜ	ΩDïÍ;ÑY*;NèÙº|‘1ΩªKtº•çŸπÿ[î<·Î=F'Ç<ÀrΩx˛(=ÏSâºıDÊ=å*,Ωg÷3º]à6ΩmeM=Û†=ó <›b,<Í\óΩ´ã<=®è<Ë√ºo%5<ª«ß<õ°;≠”ºvE=˛3¶º~¿{=°Ÿ~<êÍ<π‰È9M‘´<€Ω◊è˙ªÖW\Ω§¶∆<≠=®Û</ï≥ºaë:Ë•IΩ„Aäº8ÔH;ÙP‡ºÎãºñ{=&∂ÀºòÙ€º]ëB=æûºØR∫<]G/Ω”FΩ±€q;èên<Æ~¯;(w∞ªB<bá,=ë…<GêZΩ≈‰~=Â+Ωﬂª«=∞~;Îæà=ƒ º¬ ò=kˇ¿<•…=Ωìôº6±ΩΩ∏g˚<∞˙.ºÖ=X=∞Àò<¨ü4ºi»º®Îæº‡'é<!õπ˜≠ò<ÊÓØº«a$Ωuãá;kº˘JΩ2ÓªºNΩ°¸vº¨Ω˝§†∫æıFº›Å˘ºn–<ÊæΩ7jò;¨‰L=˘øñ;à("Ωç“=˛˝	Ω∏bãΩ5QΩ§rÛº~†>Ω;
+;Y∏óªOuéºÁ´ºÓox<zzN=Ω“Ω*Aº7∫Œ;^&X:ò≥ºCb=çl<ä€<}¯zΩXﬁA=è∏<Õû˙ºznì<E<EK∞<MKö=5Àˇ<ÄD=…1ª:ÇcË<ë¨;‹<Ãé;¶û\<G⁄ΩZÆ/∫Òπêª¨aø<|ÜŸ<ëΩ29ΩÆBRº;∑äΩNhΩD=˝kº\ ¯ºD«Ç=⁄ =J*Ëª*˘°ªØ	=hW.=€¥πdEπ<ÉsÿΩÑSãΩ∫…A=Õ∑ªhb˚º{•”º∞•*=¶TºÓ$<›à+<•2E=Ù]ΩkÖ6ºÌ©ÕºÜÒ=¶í∞ªc==R=1=X=<?Ω†,+ΩcÛΩœ•ªZË/Ωƒ3ª¿ƒ›Ωd'=_eΩ`≠=º_Uçº›A=	~ÚºBÙô<ﬁ¥ÔªÁg?<NVÄΩ'S∆ª=5à<ã J;FÍìºC≤ò<≈Ωöˆ…;ÇºO†Àº"\ºiuxºXr»<ïŸ:Æ"Ö=b!ÂªÉ_Mº©2Æπ#º<Î=ƒï¸<#¡ªlN=í1ºR´πú°˚<¡!Íº`=l7&Ω(4Ω‹àªH#wΩTŸº?Wû<Vœ™∫⁄⁄U=‹ﬂ-Ωﬁ\=:)ÄΩPºI?Ëºo]è;:∞ÉΩ£O=£Ú;˚åªñpn=;Tf=8ên=}ö9Jeºﬁ®Ø∫ˆÂ=XΩ(/∆º‘ =H4˙<4∫vºŒ“@=è'=1h◊º«:<ÿõ=:í”ΩgKà=ì˝<„Ω_ΩÜNµ;Õ$Ñ=}öNΩal¥<™KÿΩSÙÛ<àç¨Ω†ÕsºJ»‚:?—==ÍÇo<]*E=¢áG=ÇíÙ;„&<£(=cd≥ºHººÎng<ç›DΩjâº,€É;1Aè;]$≈º&µ‡<ñqA;q‰BΩ2ÚV=RœL<OãÌΩ©;æº&%]Ω2ênº¢S;ÁÚ(ΩˆZ2∫©Ù<∑∫rΩÎ£ºﬁö˚;ptd=ú;/˚ªEÂÙ<†˙
+Ω©˘⁄ºΩ&ãºãM‹ºÚ¸xºrYã=Md;˙≥S;LÚNΩﬂÄ…;Ùn*<#’=Çã∏<}ûºHZ$<ókS=˛YÑ=ø¨ÑΩÒ*Ω›·ÿª£k<}«Gªﬁ¯"<dµé<…Äº'ÍŸ<µ˙Êº¡r)=ÀüB=BGœº‰%Íº¿ƒbΩcíG=öøhΩjütΩyùò=è∏<VÃﬂª°;ZºÂ<Íí=…|
+ª≤”%;tÍ‹<B"Ø<M'HºåÄŸºUÊªY”SΩñO;„¸œº[Ã'Ω¢Æ	º‹lB=!™_ΩVÇa<,…e;‰19º∆`™; Aÿº›^>Ω¡¨‘<ŒiΩQ÷ã=õ?ΩÎ'f<g7kΩÆ5∫–€ïΩ˙¡è<=†;Ø[º\ÀÃ<Æb=‚tÜ;èuÛ;¿xº^À,=˝«%<L©CΩüPÓº≈§Ω–ßóΩGÁn=d≠‡ºw.&ºäH1ΩlÊéº≥Ç}Ω»r‚ª4V€ªÇñâº6s<~ãœº≤"<∫≤Êº•ì<˚îÅº/¥¨;öé"Ωù-´º8R-=CñÌ<={=Íõ=·ëü;S4âΩ;í∫Chªî–¿<@<©ˇ«º”°˛<	–Ω;Î4=˘ﬁOª\≥∂º»&ª›∑A=K$B</ÚFΩ¸ò<XÊª∏∑üº’ëa<QáΩ≈§ìΩaHΩQÄ–9@†⁄ª~ ∏<mã<›ﬂ‡º8:™<í¸B=∂íB=À<‘<A¥;ŒB=!º=cÔº}Ω^Ω™—;ΩGºÓ+¶<∑Kô<∏7Ωª—d=k$â<ú:a9@>sºƒª;1îÑ=d)QΩ≤ˆ=¥ò=.4πŸî…<U»6=Åﬁ<Vøºˇ2ı;=p~Ωt6=‹é¿º8z4<πYﬂ<&Ö=Û}Ωã[≤º-Ù€<9ÙÇΩI¯˜º‘Â:⁄√Úº§ÚúºIs.=?oëº;9ΩÙ÷¬<lÃºª»õn=.P-=dMïº·C <#4Cºõ`æºö:±≥±Ωzv=ÙﬁLªΩÏºá!=Éi®<r.õ<@Ë<_*XºZ·; ïºò⁄úΩ
+ü∫á=åà•πæOªÈ¢œ<àIœ<WH£<›ü;±ˇ(;ê"ΩNy^<πÜ
+ºî1<ªg§º	˛√Ωy:1`Ü<1∂;ú(ΩÊx<é ºE <¬ØD<≥Ç•=ñ{ó=åÄuºG±º"§ºªGÚº'r˚ºc£;¥ƒ‹<J“°=2*=N'ñ<'Wöº`uûΩ≈?’<Œl∂ºåÿ{ºP¬=¯Â‹ºQ3◊<ñ˚J<àæ`π«í•ºÏCΩÛÀ’;ÚÙ¥ºÌiŸºÍr<¥
+R=a±ΩıP˚º—æÑº“§≤;wûèΩ¿}kΩNÿÀΩ∫<°™ˇº†DX=◊]t=&N<åê°Ω)Û,ΩŒŒFΩ¬Ü§<PòΩº[Ç<)æ-;KSŸªÆB¯ºÈÊªŒÔ·:†•É=Ÿ(=zÌ¸º04¶<çv<¶(`<OM;uÖ¯<fU<I±3Ω≥ïºÒæD<#‚7ª‚ãùº{Ô;Ω(æı<˛Ç=ó¡A<U¨;÷*<o\¥<«ﬂ7ºí\Ω%k<AÓï<vÉn= ?3=ò…º”‘ºlIÉΩΩ:—<M®<#jΩc¢CΩ?´<‰KÌ<ìnΩcÅÇº+4ΩL~\º^Ü<ÛË;pÔ≈<N†ÕªKz=ﬁñ9)¢U<%À
+º’ÊÏªƒ≥<Q“∫	¶<[©îΩ•7Åºvôﬂ;ç¢XΩØy=“ËØΩ•?Ã<Sc™º˚œ£<CIE=Õ~q<’’¡;î:Ω¯˚Œ<Ï74ºDΩŸº	ª›ÅQΩÜÏ<´≥<ü∂GΩº&(ºGÉ8=óoî<[›]=…üÆ<Ééâ	>QΩÙiŒ<˙ô<ÿ_(Ωõz<êÁcº∂;<béºd’ ;äÂó<ŒØ=Ωœ;S=÷â0Ω›˘ø<)	ÉπÚ«X=ø∞JΩzØΩw£Ω4ßK<tO_Ω≠+—<¶SŒ<$Xºd\ıªÒî[<ªÇË<ˆ˜)º≈˘Æº„∫=áõrΩœ›ã=˙mrº ∑∆9‹>YºL`ΩØ5b=8m=¥^5º?¨=¡πª√»xΩc˜·<˚‰êºEƒÁ;˙£=s\wªEµ< ∆<ìØã=}y8º\ø©<Æóm<*ØºŸvú=YJÿ<pï∫=Î(†ºJÅ=gy#=)%<8T±;Âì<'yΩl"
+Ωv´º ¢w=-=à‹Å<ˇ^=LXAªÅºØµºÍÇΩÕ∞π<∑àΩ–ı;=ì˛<T≤Í;eú9=gDÚ<"◊V<wΩÇÉC=W Î< 5,Ωœ0=∫¢=79†º˜öΩ6HÂª‹‚^<U5=;íï9∂é<Å@”;Î¶ΩW»<=–æ9=kkÀ;P'<Ì§=^¡¡ºªÓIΩ@OoΩ≤¬Ωü…<ª¡”=?#A<t∫º·W<|Z5Ω˙ =Å =ˇæ =iÆÖΩ™2º⁄∂Êª”ÖE=E‹ÄΩíX˙ª˝Ω„∫.v<j5π<
+Fkº◊[ªL˘ ΩwÈ…Ωπ∞;„·<ØÂÄ;ß=mò'=N^º0’5;–Çãº£UÚª&»ª£ù<†v$=vø0Ω‘µWΩ˘xFΩK˜§<léº˛Üºã∑ΩõJºA\ìºÛny=L™¡;∞ {=Wm∏ºù$Ω®Ö¯ªó6ΩæµçºO\*=Ö>≥ª´å;ó±Êº8πx=óÛ;Ω¨‰á;s =Cø=J—à=£∑Ô<ªi*=‹ÎìºQÕû=1ÖAΩ˙Ωó<π’ê<l)=%&Mº2œ<Ö-≠=n£=,Ω{x=º∑êΩ∑˘}=k4;}=$.¡;ñXºWmTªrl&ΩâûºÑd'ª˝´=ÔâªÅ?âΩèñÇºÔQ€º‹æºw∂∫öıø<√ÊéΩê˝⁄ºñ;º®PVΩÕÎ˜ºÉ2.=Ω§õ;H≤Ãº7XΩõ$ç;ò‘Ω˛Œí<˛Gt<√ΩsòŒº´LkΩmıªAIªÒ2<€i;º °,ΩåTºÕ®ª=n
+=…¬<Éo:ªEDÌ<ºz=\ñ"<Ç=g=Ñ⁄-∫€ü;`ÔØ<ˇÆ¢Ω∞¿¶ºp6ù<‘8=†Æ<∏K7=qìºF«bº•ΩÛ¬<<(Ï<B˝º∆x#=¿ô=ªıΩvÒÜ;´_=ÑLºÇb
+ΩD≈‡ºÅÖ≤:-`>Ω?hKΩÄ ºj?¸º£‡÷ºßƒ;û#ºÎ§Í<”…S<j\ï<`¶ =’6ﬂ<ñæ;øäª4qΩ¯ªy=nb¶ºô˛Øº ¶∫<™…“ºmÓIΩæä6Ω4=KΩŒÌ*=ÅªHºÿtΩ€4`Ω)uY=v.”ºª—∆1ΩS‰=—Ω˘=Ω[erΩ:°˘<-ÖpΩmK,=ép≈Ω»—;S’ºuˇ˝∫yïΩ7yæº9	ÿ<¨≈&ªæœèº∏>ÄºÌ]<#∆TΩTéR=±é,Ωï∫÷€¥=°∆(ºVÓ<€&ªE§Ωåª∫óZ=Z¯-<ZëΩPSˇ<∆Œ'ΩÕ\î;‚bSªl9TΩÜ±<Ó(—<éÌΩ«â<îQ<‹éC<£⁄Ç=i_Æº≤oí=ªeΩå:Ìºy"=m3ªLU	Ω+Ôƒ;ö*¬<âHªcF:÷¥
+=©2ª'3=Ù#ΩÕÒ/Ω{Àºe'±< AΩà˜ØºÏ≥∞<¿6=±¥ôºõl_Ωl∆;åêr;kº.e+;Ã%º]}Ü=#Ê)ºõ≠ΩUxª£≠w<ó[˛º‡≥™<ÖaC=l¿1Ω¶AÍ<sTl=jîº†îö;õ.ì=ë"R=‚k<”◊°Ω	÷<wΩÉÿJ=’»ºJßê=%.ºÁd®<©úº∂a…96j1;Aû°=¥¡º;÷<ô<´Î”<⁄Õ#Ω†Áß<˙-Ωw
+ºj–+=C·q=*é˘ºxÙ#={≈=ÏÆ@<H#TΩÖˇ=´Â1Ω4⁄ºÅ4Ù;JKZΩf˘Ω/pV<Eà-Ω‚ÄΩ_ˆ^<”ôòºÿ˝Ó<¨"=GÄM=v%Ω€°,ΩìΩYV„ºª´w<mpÀ<‡ER=˙í<îeÜ<¡	ª∫wºƒˇ≈<÷D=≈π%<ﬁ∂Ωê/&<$≠=Rt2=9Ù7=IõáΩòwZ<≠Öyº‚áú<î
+üºë˜2=ï˝º0õº¬‹ÈºÔcCºr´=r<^<hwÇΩ⁄ÅªePûºÈDºŒQ<Ìò≤<∏ZÏ<ˆ#fºµªŸù<=_û<‚ç=÷…"ºÍ;„:µ•\=˘@†<&u≠<Ê=S<›möΩ(%º6"ƒª˙ØΩ·AΩπhÒ<ˇÎ€º›‡§=0y<ˆçºOçºî=ÌdΩ=:ò=˚#Ωçâ„ºıèΩm4á<ü(£ΩÑ~ß<u€‰º/√mºˆÿ;IrõºéR¨=— =…;ƒÃ*=∑ßªÚ™ ªZ7®ªÖûΩ∂ùΩ†|Ωè‡úº¨Œ<.;‚Í;	Nß;ÙΩÅ=ΩºÖË3Ωk%úºsìΩPáΩ;îliΩ6∏7Ω<	ÿº§ûp<Rh"=›XW=Ø—º“!Ω<ù•=à%Ω›-='∑=›˚ª42ÖΩ4
+:¿|ñº«Ôp<Át=ªÂΩúX=+	Ω/9=8ß<Î·âΩøÜ	=¨<y	∑ªÊk∫ﬂ_ú<¢åT=|∞èº Q3=uaiΩÀ∞ΩéIΩÍ^=ºËΩ‚ıºãΩYÍ<ª*‚ª°â˙º=-N=`Ÿ*Ωc,<º}¢2ªN^=<r–åΩìfLºeΩ#ºﬂ|<^cï< Ê9=»‡ø<íËΩá5=s™C=A¡π<ì(mΩN$ﬂ<SQ¿<´ïª≥¯<<Ù*<”c;ΩÜÆÑ∫Æ¶»∫áÌΩQ<â<“Ã Ω‹Æù<	◊<y˘z<˝ı¬<ïºæéØºt–˙ºní<≠áªL	ªxxª“ï=ÄÌÂªØ≤Ω°˝I=Ñˇ˚º©}Ô<kW	=k>Ò;≤¡=&À;=ì≤ΩÙØm∫€_÷ºË‡H=Ïv¸ºXÎ;íFÍ<ÈæAª˘›$ΩR 0ΩØΩŸº6Çπ<Âéº√.Ωtû,<Vî=Ni Ωê∫Ω¥ä8˛¥=∆wΩ‹aå<ıçﬂºﬁ8AΩdË$=Ãª ∏òºZ˙=º\1^Ωëêæ;Fjî=_©<ıC
+Ω∞Fó<`îï<'¬J=D=Å“>=ﬁ÷<˛èΩ»iA=†ﬁ„;xœ,ºå ÅºÄÛ<|[<gÓ™=˝'=ÓºΩ<Ü)Ÿ∫O<
+*í<
+Sª;0»Æ<ìÙN;néWΩ‰¯¡</ßΩ∞=—ÈhºÂü(º·Zâº[Èú<ªŸΩp„{ºÕ=J5Kº]]Û∫z˝=ΩC´<*¢îΩ6^~<è¡M;:èÕ;GΩë˙ñ<õk<8\ºhΩ1ﬁÕ<ìπØTΩˇŒΩ¨lΩ<pUóº6ÈÇº±Âº¡RΩ˛Œå=Ürç=¬ÏÂº£Èó;Rb+=∂9ΩÓyñºòV;?
+nΩ «ººÉr,ºù_¶º·’§<è˘ª≠äÓªwüQ</¥Æ= ^[ΩÏGΩﬁ~ı<8é<°Ÿá:›I=Ω4;’ºàóﬂºµc=Û=ß+5ª¯QìΩœõ˘º∂=∑äF<xÆ;èœ&Ω!ÅÊ;˝ˇ@<Wº∆£vΩ˛BáΩ∆r=Ô-H=u∑D=(Åºlóq<€ßu=Èî=8˘•∫AK%Ω›€Sº™äo<v5;ºÕ„ºH¢EΩ≠i∞<ﬁºQtΩüz<á≤ÓºÓ¬<cP=ö´=;ÛÇã=û∂="MÚº»,=íã—ª=;ú<,*%ºﬁqÿ;Å…çºΩ¢Œªª∂]<Ã™ªnöfΩΩÂºô‰ƒ<¨’£<Lä	"Ë°º!Áf=¢q%Ω≠ˆgΩÌÂªªË«ªºlCΩmdΩ' $=ûÉ<≥pNΩÒõº~Y,Ωi‹<§õ
+<xisºQOí;p¿’<h∫ªw6 <“∑xΩÉ$øºûﬂˇ8Gﬂ<ÕÎ<U∆±<πbD=VüBºáÏ<„òºp$êºMçV=·ÊªbµΩ£è2Ω˘¯=£^=ê÷Á;çÇ7Æø=X¡º¿Œ·Ω«ì‘<Pï<*Äﬁ<.Ç∆<∏ö¿<™•+=JÇ=~PE=bæ4ªê>Ì<ç«<ó=W 
+=]N*<q|§=5†º‘ÿ3=ˇó=”ªA)º¨òs=I®ºRQÆº•Û.:bäv<ﬁ£:îkÑ=Wj;»>Ω…êõΩAÊ<ÛiØº≠◊›ºáS|Ω¥Á±=Ã*<QÙ=u=◊7´= < :¨±wº% ºıj¡;¥óy<6Åì=õ=˙ÑîΩ&«;yIü<Û ÷<eN=E≥:}–ê<nëºYA≠º≤∂y<0Á‘<2SÜº	®6Ωö%Xº*ﬁ<pØΩ®áΩ‚Ωì<√òô:ÄC·;U¯íºiñN<El&º$€=XNá=é!*Ωœ,Ω•T
+<ø,≥:ıó"=A±≤ΩˆƒΩÈXº]õ0=(lºÑNΩ_ÿøªecΩµ™º<Ñº\	Ω=
+=“ø;’’äº∆ª\ºQÍ_=∆Üº,|æ<œ=»√ú<2üŒºÔΩ}⁄IΩô*%ΩƒNŒºOÊÉ=	æ =™4Øªá∞ø<œåÕªAfΩ˙øΩ6îù<®∏Ëº_tˆºô±óª≥/ΩóﬁüºæﬂR<á‡ç;RçÙ<®ÁEΩT)<ÿ›$º,¸ŸªLÕœ<ëU`<MÃÜº]ÌºØÃÍ;ÜoºîF©=bVçΩ”	û;ln<a+ﬁ<úqVºGÆ<ÌsA=É¸=H¡fΩ7ÓHΩáÅ;ùuaªì,ºZ{=?∫€ªDK<ö3î;.óC<c˝
+<j°ªu6ûª∆ÔΩ{ç2º#Ω˚í;£?Ωï„Ω‰Ω¬◊lΩ°+vΩ‚mâ:ÈÅºˇ¨Ωfå=Rè˛º"‚[<ÛµN<Kqƒ<¬®Ëº®Î<§•Œºà˚´ºÊ¡<)u”ºßìΩX=XM4ºÄz∫º—^=ËD=˚’ä<\f‘ºg/ç<‚‹º‹ñ;;\ôº§‰j=j§º- ºÖïQΩ∂˜Âª^…ΩDk|º¶@ã<Ωe<ù—£=óny=z¿÷<¡=Uó,= Ï<5∫ºû˘<Ù*<æó$ΩàøcºGI·;
+ñª‡,Ê<M⁄g=”'ëΩ >5Ω™k=≤2®Ω+©çΩ˙ÉØ:ïë=ˇ—ºxYØ<oÄ≠<(,;‰2e=Ÿ–'<i§!=Hó;8;¨q~Ω¸ÿÇΩ-(G=<a
+ºj¥GΩÊ'Ω¸|º˜üºk£/Ω%/qΩ'ùN=„z≥º-)Ωz‹/Ω/ãë=»äΩIá•<§’:;P≈ =RêÉΩT!èΩ©åΩ‚§’;hµ=Ωap{<ı`¸Ωw <*dΩfºKRîºDﬁÄºOÎ =¸´ÀªF÷˚º0ªΩ≈>Êª˝‘™Ω}Q=1pº˜cxº4(ü=r›[<¯§=‡P<√.0ΩÆUVª+ ã=\Ω=Ù6ΩßÃ	=ä[åºôºG≥ΩF$äΩe⁄Ô<Á4ªó›Ï∫â≠ú<*Ãä<n¡<Ndâ=ÏŒ±º‹\U=¿lº◊·MΩ6h)=∞Ñ€<©Ω¶ÒXº·L)=ﬁ¶?<˛‚ºçè…;"M$=é •<Q%Ω Ω›ëª{ÊÌ<7ã•ΩÆ&s<¨`<R•+=∏£º¢é"Ωƒäì<\°Êª˚Ô=Ædbº%Õ∂ºÙl0=∑∑B<|£ºí©ΩÒ<î<q´º±â∫h;=ñÄ}Ωüá=–AÜ={è~ºΩ÷;Ÿé∫=*∂ë<€Œ9éŸâΩ¸`=¯àΩRú=%¬⁄ºÏ'=Fº.ı˙<Ñìº+pnºëËºìÛ=]ˇCª¿“<€
+=ÇqãΩTú¬9KH”ºç+Óº•H»=Òë=wV	Ω†•ﬁ<æv@=4◊<´⁄IΩp`=íﬂ*º◊˘1ºÕ—≥<ÏΩ„çCΩœä*<G≥PΩ∏hgΩJå:ã£f<á˘◊<„;Å= ˆü=BËÔº›WΩaŒΩ∆JΩŒ?¿∫∫e=,l~=)R<ñ^=5<·d=Ëq'=o¡=BÁñªMéèΩŒu<ƒ∏ö<»4=œuºi´∂Ω[«ªıòkºO¿3ªï†ê;\|j=„ÌΩî™÷:0˛øªbµ˘ª@5ë=Çzí<ëÅ?Ω¯F}<pZ)ΩM”º¯TÄ<2{ÿ<bµØ<<1√ªµüp<†õÖ=¨ÒË:⁄!=é!òº«&ï<ˆ€a=«eë<Iµ…<yXªNﬁ£Ωm{¿<öM≤;ÔÿCΩ¡'Ω±ÿŒ<î•Ωy∏ =•ÿ‰9Ûı/º†Ê‘ª≥D˛<óΩâ˜r=}(ΩiÈøª¥uΩ8&ûª”ÅôΩzØA=©
+2º≈O°;ßâ:MeGº˝û=∏ É=$ˇ~<¡Úá<g˘◊<|»Í;)éçº(ódº”BÓºÑ€®ºPó›ºª ›<k\ººæøvº€Œ	ΩYÎΩ˚Î÷ºQ⁄Zº’àïΩË–∫ª"¿Èºœ¿ ºd÷<¡ﬂ≠<‰òn=g’;çKΩí^Æ<›Q1=’¢ΩÈ˙4= Ì}= )DºÕ{Ω¡ÕﬁªB‰√ªDïº ‚ö=ù∆€Ωˇ( =›⁄ΩÙ&+=DR<ãçΩï.∏;±/º∏Ú/º∆fˆº¡X<%f»<—geºJW<‡('Ω/Ωa¿”ºuiÚ<∆≈èºxærΩ˘Nlº8¨$ΩÚ≠ﬁ<∂î:pK[Ω√£‚;-Å=Ü‰º◊U†;	<¢œO<@÷ÇΩØImª»‚®<çÍºêA2<î¥2=b∆<∆≤Åºñê?=‘ËÑ=Øû<º$hΩ®(=⁄å4=%2<Y˘=™‰; <"Ωjaø<©ºa¯YΩxZº˘I›ºr∂E=}∞*=M&=ÚÁb<úÚº¡√nª©\Áº’@<»º≤∞√ªyÓ<=eÜ=)‡ª?]ƒº#µ= ¶¯º@¨=˚n∫;º? ºÅ'2=•k(ºöQ7Ω¡æ‚ºÙ÷º¥7=^∞ºCÄëª dØ<ö[í<ªºˇ”9Ω˚‰"ΩˇˆÖºG©ºç¡´ºaÎ:êã4<ë(ﬂº+ò
+ΩfâºN‘Î<Í–CΩ)∂Ωu°ªJYΩ6eR=7\µ<—<BºÜæaº¶ΩLΩJê<vC#=¥¯<f†îº≈^=J[=3∫=m‡%<b2[=Û›<ãAÅΩE≥g=’_|<⁄Æº≈ÈÄº®¢=±?ªê	=é7=À<Ùˇ∫∞á<˜ÅºÎZJºÍ∑<î`<CâΩNM=M5KΩﬂÜ<Wãºªªœ9ˇ:‡“<fΩ˙mZº¶Ïæ=»sΩ,fR8ª‚ΩÎTÕ:T√Ω;=0Ã;‹≈ô<Æ8Ωû7"<Ì∑£<+,Âº$ xªzK<‰Éº∂ÁÄΩ|qΩì„áºÌ&3ªêéº£œ#ΩÕ∞º”bìª "ö=á=Wh"ºûÌ‡;FYˆ<‚fıºQøºeL<Òïºº7ûª—≤Ö<B—HΩ¬,<≈z-<@¡¨ªæj*ªàø=_	ΩäÌºÔﬂË;€ﬁ¯<˙Ï™;˛BYΩRa£ºÚjƒº…¨ï=·‰n=Sîﬂ∫úJßΩ®3CΩ≈x=_∏<Ë˙‚∏‰ﬁ´ΩÕüìºÌe<f/Ω5∏∏ª≥<-Ωˇ:t=é=0=ŸpU;¢`áªvgJ=ñˆÔ<À—º^Gªºî’8:K∆<N∆ªà\TºΩì±Ωq*9ºı√ºﬁ5&Ωñ¶<E›∂;ib$<h·«<s	=3)Uª¿∆K=d<ﬂ<K ùºÔ=ﬁ§º ‡ªÒ4;gÁªpå¯º•º?∏÷ºß1ûº[òº‰öº%ÔŸ<x∏;é`Ä		ΩÑ◊=ôÃ˘ªÚy∞Ωƒ‚œ<º∏ªêΩ»«º≥3ã<-æ;
+0˜º˚ƒº-B*Ω&„¸<ßÁ;„V3<ø&<¬ =ü˜;—UQ;∆
+âΩM‰°:õ®Ø;≈(¯;ÏøÏºØ<g>ó=, vºæ≤CºwEëº∞+∂ª[}=÷Æ<ÿ?‘º&ÛBΩbqsº}J§<c«πºd∆ª8ù<˛ñµª”Ä®ΩÛÔ˜<&he<tØn<≥Ú∆<~U;°^ç=}¥ı;»|;=jï·<≠MO=|[‘<JÏ <πS+=Â¢<‚∞=∂ÿΩ„·`=[¬å= π∫ÌA<I• <ÅL/ºÆ‚nΩ–m
+ºTn(=œ¯< ƒH=Ÿî=˜Ã:¿éäΩ˛„;÷ù<7X3<_uΩNÅ§=ZüA=0æ<7«[ª|ú™=jô;º4Ä;êìOΩ“”å∫è ≥º« õ=,ä£=›ﬁrΩûD;ËŒ¥<#pº7`=ƒÖ9≥$Êªé6º0Ωƒ<Œy·<íH–ºÔø
+Ω≈ä;£%=	8Êº◊»úΩ˜5Ωa0<=ëb=M•<Y·º— ΩF¡Ì<„	W<ùÀÖ=‚˚Ã∫A4<Ω”∆Â<‘k<Ò<„ﬂΩRêÍº≈Ö‚ºŒÄŒ<|AºÕSoΩñıΩCΩûõŒº'Üº!DWΩ-∞ó<—⁄®<Qƒ®º¢ ]ºN/Z=∆âÎº≥<L=È†ôªª&á<B˝vΩØûºÓñΩˆ“˝ªfÿCΩoÄ0=%'Ç=õ}ΩNNı;∆2bºD∞BΩE˜yºÅa<Ç:æº·~Ωã‘è<*#'Ω±◊Ÿª‰€3Ω4∆ºm1=+ΩLœn<s◊ì<‘#4<4Ø=A∆z<$œb<ÌF"ºZﬂß<∂«˘<›1v=úofΩP)âº»À<±:√Ë¨ºUç.=0I¬<:ÀK=∂™2º°h
+Ω¶—;?´<5;7<˝…;=e*>;:•2∫ÀK;<.Ω9=˝X™<ÛÙ"ºA—ªºQgΩ`YVº’„Ω[ﬂ,< îKΩ_ëºΩ≥ñ?Ω?‘.Ω$Ø;!®Ω¸%∂ºdè=ÂﬁºR2(<∆¯†<¿Û;nE"Ω[)=]∫ªöúÊª ∞;Õ(/Ωêß˜º<¢k<©h;V|ºBm%=ìôq=Ë<í∫°º|Ÿ<ë*∞º.#¢ºa≠‰º1:=J˙Zª∑m≠ºÖRΩ(H<∞ÆΩº_ÒΩg’gº†¢<∆y¶=¶Uq=À”ı;Œ¶q=çgÅ<ë<v¬a9æ›<	º¿hêºÛÍΩº9¡^ºÔÖºµâ{<˝2Î<`jÄΩ3fΩ≈öã=‚bLΩ‡l^Ωﬂ-º0Ì;üËqΩ*Uk=ÀÌKπ≤~5º`HÇ=˙ÿŸ;≥CL=òqp<€ë<Z8<Ωi[Ω«ê=dé<⁄UDΩ¢[ßºmNΩºA¢·ªÄ…<â}Øºv=◊=hC¢ªπ…‚ºÆÿºM-<=ÏÇ}ºHﬁâ<<Ω!@÷<	≈ªº˙®§º;bΩ⁄^Ô</$º¸lû<»Ωnı¬ºwß^ΩÏCQº∏>ÖºjTø<IÒé<H)rºØã¸ºqèxº1m„<»√º&¢≈<á#≥ª“ÕŒºæHÂ<≥t<ån˙ªùF<ç;<ºW*(Ω5F9=
+à<<O=ΩXñ=´ìº-$Ω¶‘íΩıÁ:¬˘=aB<—*ë<=8û;Ÿê∑5…_Ω“À;=pò–ºú+=-´Ωıﬁ ΩLê‘<7n}<¬wΩûOº˝=kâùªpÇº/ ·∫};â<y=”ƒ√<[¨MΩ›X®∫áà∏;]˘º‰R~º‘"<Ä9+=Üß∫1!zΩˇ¨ª–ˆ‚ºCeû=C#“ºåÔ%Ω†vª<mN<ŸóΩ9- ºDCΩéìØºnÏ<b‘o=x´zΩ4=Ç¡Ç=NŒ’º3R∑ªØV&=œ”5=™ôŒªu¥Ω%D=±¥ûºíÑb=Ã‚äºŸ˜l=Ûo:=IŸ´<Ù‘=”.Ω;l
+Ω–J…<œ§ªøA<ŒzC<;^¬ΩV"2;åp&ºº∞0Ω…æ§=S¥Z=ö_Ä;Ô
+=+A= —Ã∫e¢º€ƒˆ<D†lΩe©ºpªªîáΩ∆çñº ”µ<2èéΩﬂΩöΩ$FªSÍj<ãπû<:ò=èµ=í¨µªwΩiFΩ∫lΩˇË;®¥;Cl=’%»<?w=§ÏW:ÍÒ=º<p™ªò1Ö<ﬂCA=zÒ'ΩÊDá=∏◊	=8ŒÒ<‹ôæº7QYΩ≥B<â>É<∏ì¢ºÔYù=Ù⁄Z=ÈΩ ‰FΩäûE< Ω±˛•<z“=h®ºΩ±ˆ==‰RΩr˚ºÚUB;≠3íºh@<êUmºd°<
+Ñ =\Q
+=≤±Çº»à¥<É•Ì<¨äâºaQ<≈]:⁄Ã;lΩ,˘‰<˜ä”:t÷.ΩD™>Ω-==f˘ïΩc÷ù=¢í<¸]@Ωºhæ<MªóKáΩ;∫=fÒ!Ωv+aº6˘&Ωf¶AΩˇäºO‡p=hZOºúq¬<Xüjª¨ºíÃ=¯=Ωç£< [=√&EΩ d)º∂∂2Ω<ˆ˘}Ω¡üOºƒià<‡“<i% Ωro‘ºÆ≥ªª˚_cΩÊGΩï¿&Ω^Õ˛º˝.Ω;˛…<Î"	Ωù/;Ω¡®7;(y¢:,æË<ÛÜ(<®ÕΩëK/=á=dπÇΩ◊éY;…%S=’‡ ª+	ôΩ§nH∫®d>Ω(°<Ÿó%=\«÷Ωrâc=Ÿ	WΩNŒÈ<?ô‚<°[/ΩÑ1”:UÕ;&®®º¿ÂΩ‚≥èº33=vºº¢˘0<çägΩ‡Ádº2Æs:c˛
+º2¢º•”ìºﬂ)£ºv⁄WΩ¡⁄π<m¶è<(kìΩ≠Qºº|
+=ã_Kª7Æ<óÔn=TÏ<∂EèΩCVÇ<'B.=≤Çe<≠≥‘ºÅƒ='≈º<‹fŸ<q◊<·ß0<O:=ZypΩS1`<û„<èC¬<≠(F<∂“X<Ú¸+<|—Ë<®ÂüºpkRΩX∫˜ªÏpì;¿¿=ÿÎg<V®C=~dõºï˚%<¨s™<	*€ºÖ•<”¿“ºOÍwº‰7T=ntö=¶Ê)º	Å®:{˘¡<+1ºA¯<<ı∞r<e~}ªÊ©ﬂ<ñ∫ª]JΩ1hºX©º¯35=é“$ªQéª… JΩ\‹g<àGÖΩ ÀZΩ¶¬π›8<§ß™ºmJNΩá3‡<§‹˜∫e	ºº*^;Ä¨hº åï∫ˇÊSΩ%m∑f$ﬂºDyäΩ’ÇR=º[ªΩ»ΩÕÜΩN˙%ºKˆµ=™Eº<®OàΩT¶Ö=a9h<6=$ΩçBì<ºú¯ªf¡∂º[f=qQ<EV?Ωæ¨ÀºΩM=4X	ºóò=™E:=ñ<í/ ;q◊ªåm}ªûl@º==Lcóº,áºZ‰~=-c
+ΩoÒﬁ<¬ñºÃ®#ºµΩr~º
+è‚ºﬁïñºLÎ=—Ÿ_Ω¸∞éª9c-ºzö0º´:Ω†ÿÙ<%p,;Vy€<‡A£:$P;‰Ω–Sÿª•z(Ωa„=ÚXºu,Ω+§óΩﬂö¨Ω—2ÉºÅU+=,à2<∞˚à;´âÊºÜt6=NØÇ=?ΩENº44=´¡º‰a	ºhá8ºze+Ω›ˇÛ<öj<aÂŒº}œHº Õz;ïN<;ƒÅáº¶ïZ=÷x/<òQΩ´3ÆºYú˝ªÊ˚6<˜ÄΩõOº£ô'ºEÉ=—Èì<⁄b˝ºM≤ûΩÈı¿ºô‡Ë<=5ﬁ<·˚âº["æ¡Í+º&ƒ<F:=÷§ªÔ¶ÓºÌ–=âi>=©B=ŒV=pv;¶ =À%‚ªÇ∫O<zG√ªârFºn˚µ<SûGª@,&º≥lΩÂÊΩKı?Ω^È7ΩÓ_ï:Mü˚ºŒ<ÜÊº≥$„<Nuê;XF=k.<ßìºô)@=ŸDxºlê-=}3ΩPë§ªçCMΩª“-ºàO<¬E<ˇw=º÷√ùº!œºÀ <¬FÇ	ËFOºÕºê<Nü<Ö)æΩ’Aü<+ÖºÚ9Ω¨>ΩXQ≠:•ø:zEpΩòç%Ω’&HΩÑ-=„´∞;{%À:˚nP<¶ò%<¶≥:à“áº†HΩi^ΩÒ«Ø;sÈ„ªW«Q;#…Jº∫è=e…¢ºé)“ªƒfåº÷ˆ<ùàÙ<øπ;·;º7ÄâΩΩæ ==Æûªååêº∑õÉ=‹¥zººTÏºê=¥Rºá!=¸û6ºÿè	ª5œ∏=Â÷<±Æá;BíÌ<KÒ<≈>=œE”<Œ"=uﬂ=àQÊ=®¸hΩ$Á=ç«=¥>Ê<Íq<"‡ß<‰˙‚ºÍËΩ"7Yº2<„[G;ßèäºΩ•©;ÖL®<›Ω—ºê·C<â&º}Ä9<¨C?Ω qD=\ˆZ=´v†= ÷< Q±=pÁc<∏÷œºœ‘∫<ô|j<π–Ü<.ˆ1=ŸπÜ=|ÓΩ?*√;Íı§<ÏÍW<≤ª#<êπ:€o±∫¬‘Ω—rΩ∑¡â<$?=πw'ºñöSΩ’FÌº≥ëÖ<œ1MΩºΩgÿ*Ωa!™<Ê∏6=G'=?oèº}	0;n+[ªÀ‹<	"^=˘@Ω<_ƒ%ºﬂØƒ;¥¢î:/B≤=¬¬´Ω'R¨º^ Ôºê¿™ºˇ8øºÜ√äΩZ¶BºYs]Ω’,MΩî=é◊Ω√üàºA∏_=µÃîº•µƒ:D,=ŒÉ7Ωq°Ñ<∏“ª<§ªß∫CƒΩãŒË∫$~ºr¥ºáHΩiT=Aj=Ñ‡¡ª`ò§<=ºèJΩ	U”ºY“Ã<7tû<k[<r™Ê:˛ÒSΩêôºZ’U<›Ì¶ª‘É’;ﬁdîΩkk<∑_=Œì´<4Bj<˛´)Ωˇ≥l<_t<¯Ïßºß≤>=∆∏`=W9ΩJ÷O=BY=ÎIºóV)ΩdM=tXú=S»ºÇ]WΩq2†;ﬂôä;1/Ë<≤Â[=°Oó=∞Ã9Ë´”<zeº+1Ö<q#s<ÎΩ"ΩÅS—ºÁ
+&Ω^à<&≈J∫!]@=Cô¢Ω.ª‚ªÒL¬<í©SºE|ªªc‹ºh,Ω[◊;ª◊º=5<ΩMW º!ﬁÇ<˝˝¡<Z2Ω ¿!=°5;7º∫¥Œ<°mÒºAΩ2ˇ\ª⁄öH;Ç¡ΩÚ˜<1∫˝<™'ù;œùΩÖn=æ∫˜;q•<(ÙΩÑ≥É=˚ò@;ô÷ı;-r	Ω⁄¥H<úiΩ‚IΩ¡‰sªJel<˙ÂÄ=…Ap<ëÇ„; ˛C9sâ@=
+Zêº™´iº^O<¨ <Ω∑€;—˛<Ω=ró;¢ÏzΩœ¢y;≤ª=¯ºÀ«ΩL\¥<&ÆoΩL[º«AÜºäå¬ºì-€ºªøÈ<÷<`ï< •<è…Fº¿¥Õ<Ë¨mªÌ}˙;tjPΩ[πº'°=ío=N˘(:œ∫ºõì;zØ¶ºAZΩ{˜FΩ™‰?=ﬁ·õ<éG Ωà°OΩ®`=\BΩ§˚;L;›—g<ï◊§Ω’—˘ºì†(Ω_Aèºp®Õª∆¬ó<Ç_ÈΩ7ˆ;´AZΩ◊H‚ºlã¬ºy`W=ëÛC<©^®:Ÿ:´º◊Sé<í%QºçƒCΩîÙY=b°9úÖƒº9O=¨ºÇ∞Õ;ÃK <>Ωª‹º˝'Å=¸x=N‹n<’˝<ì Ω◊iòºëéÛºÆrzΩÎ<â´ª<√åﬁºGôv<l`Ä∫©Ω«<*ˇG=†y´º(¡d='™WΩD´YΩÓKÔ<Çi[=ö¿ºHúéº/[£<m›¡<zDFΩæk◊<Qûn=ÆÈ;©qΩ>ïÑΩÚÚΩòﬂ=3˛Ω
+7ê<ã&®ªÁ«Ã<‚¥ÕªhÎªPô.=ñº5≥û:O8ûºTΩÕ|=¨%e<°w,ªaÚÇºΩuá;—W≠º·x˙º/‹Õ;v±ØΩˆY]<ûµr=Ÿk Ω.¡:«|ç=ÚØìº›w©<áΩzöq<Ê8§º©_Gº¸§ËºYÀ<0*ªªø◊ÃªöF¨ªaüº°]≈<ws<√∑u<¢	ª∞Ú<ÉgºΩÉ˙9ºrÁ0Ωm3∫ºÌ>	ñ0=)1®ºÊB4ª˛¥/=¯Éºo≤Ω*@Ù<=hªºmL√º
+{H<RΩZ¯QΩÊ <ZSΩÆÜΩS+îª„‘/=¿Œx<`êﬁ<P2¬=Åµï:ˇ"WΩ%7ºZΩ….ﬁ;oé—<ø?=&Ä
+∫ä◊—ºvx#ºA≥⁄<ÿBÜ=ÁK=Ò°∑<“…NΩçR«<ŸP=w–;ª9Âºk3—Ω’ç{ªñÂ=ºﬂ˜"=9åÅ;/eê=JTºvqº˘≠•º	u∆;àô=Æ8e< µÏºÑ<IVPºY{Ω”Éº…ñ∫;)(=G/Eºv<Tqä=°DD=¸`<·—ª“9Z<òÿ=¢ß</ÄøºöÌñ;˝	∫Ωq—<ùèH;rUΩéΩ¡Kë<ﬂÒÕº…àe=¬PªÏÜÆº»‚;%êÊ<,/ÀΩDú_=ΩΩñ≤ùª…®ÓºÏÈπ<ΩãSΩ‰À=<ìƒÈª@»‘9d‹<ÙªúºÍX¿=à»í=uä	=‚ÑÃ<àé¡ªÎ≥7<IÍãºÎ¥∫)Œ±ºt›ÖΩ„Ω0ì‰<N;‡c º/{ºì&ºAn`ΩﬁöΩk∞]Ω‡‘Ω&N⁄<Ê=◊º¬˘›ºtÉºn‡=§‘<=äwºà-Ω†)z∫V<=˘O€ºüß=æ˘ô=aA£ºª—áΩ∞¯ºpæ¯<¶µ?:gAÉ=ˆœgΩ+ìí=Æ	ßº'∏è=0â<	#KΩÍzuªˇY<¸îΩ–ylºπº…(<çeeºªá	=5÷$Ω∑ÄPΩTåº∏ü<%'<õPRΩ	ê£ºƒm’ªÉÄu<üvw<¥ºˆº≈æ#=¬w=¡AÌ<∂ñç<%XØ<'X≈;käóΩ-ÅKΩG®é<ÖÖ™º’¸≤;a›â<¡µ¶<≠Ω“f]<ˆQ√<˜rÄ<EAΩ≠–¬<^ó<Ç°=@ÈÜ=}ª;Ã;^<Ê÷Ô:€MdΩ2_*<ŒCΩ'¯=©Î=-À∏;dÔ<Ú¿∫ªkÓk<˛ƒ†ºìÏ—ªÃ	§º‚™ÅºrÛMºÃ==1ﬂ4º)Sº⁄ =£wæªÀ6=áf™<&®`ºüNè<K»ºå∏Äºv/Ì;e≤Ω™>=˝Á#Ω⁄;Ü’†ºÚ‰r<ˇ+Ω-
+º◊§¸ª±%nª—¶ƒ;mPΩNNã<‘Â=˜∞<ΩùPºL∑< Â=Å∫ Ω1∂ΩªÂÈ	=ÏwÜΩ…Ç=Ü‹;r»º5›£ª˝aıº*ÿ;ì…“<K@·<ï®Ω È„<‹^É=π,»<ß´º´¸Y=ü‘_=í†Ω…=ÇMº™ÀºGÛÃºh5d=ØÜ∆;ò9Ñ=:OÅ<5 A<Ñ`°;Ö™Ç<ˆPΩ®+ﬂ:ª∑≠<5…û<Ø€çΩ=ÄïEΩÑ˛A=0´è∫§◊º∫zYa∫®æ°π/Ω°o<ƒ‚Ø=o–LΩÁ§°ªÂÀºç¿:≤j|Ω÷|c<3¯œºÏN¿;Ë©<≤ ~;·Ã÷<„yŸ<"≤nºÔò∑<HUàºP~\ΩÂ8]Ω™úŸºciï<Èd∞º‹_Æª$Mà<¶ß;|î=w∞Æ<ÀG(ΩL…;ﬁh=¥≈BΩú•_º /<∆(ªJT¿º˘éç<úÇ…º§L<r˛>∏Y=Åº∆WT<öÙQ=v90<b’ΩÆà5<€Ã<–º$¡MΩ0!ÃªI[ªπôb=ô^=†Áª"-™Ω„"_Ω‡Ç=•”ÿ;JØ∑ºñäÒº«Óqº‘ªl<G;èºÆ ΩI˚Ω§ˇ@<s∑é=±ëº<ÊØ;∂È<ÁóΩ=¡¬ê<ﬁ˛R∫{}Ω3ÃÃª/\}<òOº5#áºYt’Ωf£≠<léRºWjΩ«hı;ïNÆªô}º|ª—Iò=ÕnªYTa=Ωî<"≠IºËîL=ı'pº≈é:⁄Ω»fyºô,º2è,º◊ì	Ω˜∫“;&ﬂJºs≈ã<Êú‹<|=?ï	íSº!NY=‰X0ΩπÇΩäé∑<£∆â<:◊£º·;ΩGpE=øHì<˚ˇº2/Lº∆6^Ω+  =Å?/∏Û|ì<d='¶`;?·§º1ÿ›º–Ò Ω2Iº‡ªÚÿÅºeÎQªWu<ZHU=At?ºõì⁄ºLÕÃºsê˜ªë–P=ê≥<Áº»HΩ™«
+;w<∏<£!ºˇù—ºáH=≈Ü”ª◊¡cΩd7<•:¸Ùâ<V+9ºõ$¨<Ÿ!Ö=çQ<Bôº;5Z<ú =Ë◊<TÓ¢º√PE=/ùä=°ªµ=◊	ºº—C=8“∫=b<9nè<˘§ß∫¡t+ΩuCKΩl.<‹1˜<,{B=j•_= ?Ôª_( º=ßóΩ/p»;™ı7ª´•@;Ã?™º ±=√e^= =Ra∏º…˙ã=á3ïºöœΩÚ≈eΩT’ÿªÀÿ§ΩSÙå="ä§=ê#-º9ªZºÕºA@˛<%6†=œ‹ı:*ßÿº∆Á¶ªpn&Ω-à=8¶<¶Ï;1ÙΩû¯ºÂ¡òª\y.Ω,ôΩÂV”ºâI=^√=ì(Ó<≈}·º¸  Ω–ˇ/;ì˝<e˘º=d‰∑º!•Ω}ôé<IÉ;®æó=÷OÁΩX÷<πê≥Ïº\æ?=£å5ºÀVΩ™Ò≥º?âΩtTºHÉΩoÁ√ΩZ«~<WWG=ì‡u<fÓΩº´ë≤<.˚ºòM÷<J„Æªq«˘<Â¸ΩΩìºùhΩï¬ª·Q(ΩBP:<‹éo=&˝ªCÁ<÷ºé—ùΩ]âá<õGΩ<ú/êºÔYjº.]"<∂∞ Ω·‚ø<e¥‚º9%¡ªiH%=î†8Ωq=≈#Ó< (=aø˘<l≠<Ëb*<ÆÕ∆;ÂÄAºó∫Bï‹<CÉNΩ-ıº∑_‰<'Ëi<}˚Çº„Üπ<=Ü.=«Õ=1ÃÈªq˝jº(§ÚºFo=ÁÜ2<´=aπ<Î¬4ªÔ è<¥¢ª¿<=V¥ºò¿<˘Q1º…æΩÿmΩ cº∏$ΩÛ@;{?ÉªˇŒÑΩúMˇºÿf›º.Ωòêïº©b=-©âº«Åº‡—ı<0úΩ9»?ΩP){=
+qâ<Nùª∑>ﬂ:9|Ω	∆^ºqA<90ªÏt<ΩªáÇ<E<µ¿<P9†ºµﬁ,= £Ä<hÏ<C™KΩjÍ<†÷;ÒºÜÊ∞º‚[-=w†Ω∏c"Ω”&Ω∂á«<≥ñ±=I‡ê=õsÃºì“æ<$;ª¡∆¨<öH#ªîG=ôΩ¿ª€;9˘=q-Ìº˚ﬁD<æß=.Ì}Ω0Ìº˜P=)*rΩ à5Ω2Áªº˚bøºr[DΩsˆö=Jèºâè<∫3\=I 	<∏Tí<Õèº<ãç<æP≠º”KΩ˜L=0~óºdJ
+Ω¢¶⁄;>-I<9)‚ºaŒ™<PŒ§ºAìQ=Zxö<WŸ%<Ùy&ºõó¬<Cn‹∫tŒ);˛Í0<Îù~=4ëèΩ·cßº÷qeΩ†¸À<∫çnΩåD"ºùcWΩµpèªÀ5Ω¡‡NΩ)§&º‚|íªµ`Ω∞!©ºD ΩmwºXΩb»xΩuæª/”Õº<.‰<Ë¶E=çÆ∂ª{+ºè%Ωï_ΩÚ¥ªÔ‡·ª¸^ºÍ.<ÓÈ<Ÿ∆HºJ!ΩkÂf=R	kΩòä∂;◊'=´éˆºßÜV=âºôﬁΩD¶=⁄Ù1ΩA=”¯ÉΩË≈º|_<*·;<¬Çª	ø±º¸ºP˛<¿ÛΩfKù<[&l=ãô<…;$Ωü´ãΩKe7Ω!d ºÄ,ºÜ><Xaÿ:KZ=
+ˇè<JæºñYÏ<¥ ºÖ®o<Åxåª∆£º7ﬂ =l_º˛8ΩV«<√8ä<Ä Ωæt&=œh*=Á¶Ω·Ø‰<Zh==bWΩCê'<Y)û= °º-UΩzWº0ÉªzÑΩYÖº.‡ºº™s|=ò;⁄vè< ˛∫z„˝ªò@ªõx2=¬—='¢ºUÑº`X∂Ωa¸<œ%èº„\Üº#o>=	àM=g¸âª äêªß˛ºc˘ò<∫ràΩ`v4<˝TΩ9ÚΩÄÊ^=k7pΩbâ =õ <µ¯.ΩY˛]Ωà©Ñ;™P=Æw≠ªQz=ìW=MTXΩßãÆº<Â˜ª™•âº⁄@£ª¨ô5=∂yÄ=∂kHº€,∂ºB„Jºv´¶ºW‡á;r™^=6°.<:‰ΩW~œ;«J<Û°;çs1Ω˙⁄ΩT∏¡;∞œ¥<¶é4=Æµ=◊;¨< œ∆ºMÊö;hã<BVL=-õú=”Ωˇ;Äªí`—º‹¯$=‚stΩŒ›?Ωf¢?=≤mí=Ω)Ω8äÂº&!Ø<\CÍ<M‰<`DL<*
+å=?ßΩàâ&Ω`”ªJPñ<%÷ûΩn§ªPΩ˜⁄Éº$¿Ñ<1ÁÎ<VAΩ†ëÜºN.,ºG·†Ωπ=§ º≠<Ω=CŸ<FΩ[l‰<Ê=‡ºhå§º3“ñΩ›=Ù<X:‘ºÂ2˛;5†º[µj<P—µ=*◊=™)∑ºÅ?=ºà≠5ºHé=Óé
+<ˆ
+Ω€aΩ1RËºIP<¸I˙ºNÊQΩpÙè<‹º±º†øº¸ŒüΩ≥˜&Ωtƒ</…æª©6—<pJΩ"ÔPºˆRΩ§Ω;IÙéºòT1ºnÃæª0\áºx≈!=Î+º˘&'=Vä=Gó?ª@ëπΩéyΩ’(‘º§ƒs;”†=nöΩŸ¨å=}Ωßs=∆˜cº¯g•º¢¡º›b =»êøªÍ+èºÕä∞<á~ªpØ‹<›1=^ZìºœpEΩ°ﬂîº}<<¡û;<dj<ì4H<”{fΩWÑ&=¡A=YH<n=∫âã=ãºÉõ™<õdºKî$Ωa)*Ω;hªE?∑<ZÁ=^4Ωl<¯<ı2_<‘ºÁ<uŸxºù@˚<öjΩ„ÿù<ö7,=-uç<¯ΩIáï<⁄Eß=æÂ<X)==V’ãºM]=–¬Ωm4,=‰Õ<aÏ?=ò¨ΩÄÕıºåR=›^BΩkLª÷:gºíΩÃáΩ	DÕ=<Áˇ<-6÷ºÏà≤<Ω!Çª0’< )G=#Qº üœ<Y‹L∫'uºvâÄªï¡oΩùg<πÊ‰<“]ÃºÌb9=eU◊<züHΩ£4T</Ìé<B%=ò¥ºp¯‡ºK∞l<'œï<]aZº…v‚º
+?6=ﬁ¡µ<Ò‰Ú∫gX<› e=ZÛΩ?’i<.¯ºR≥´<≠Ó@º«ø?Ω Ì:Ωi.=˚ı‰:-≥ ºxéï=Ö_º{≠¨ª∏”<? f=VM=ˆ,IΩ_S±:Ñúº≈'ΩÍ∫;Ω™›;≤à£<—ø{=8}Ç<î‰œ;ø∏?–ª“V©<`ªWº÷œŒªñx◊º“§≠Ωö[Ÿ<~∫UΩ‘µ<√ΩÊ_WΩ(ÿ3;”º4≈º^àºÖé=πÖΩw¡ãºéå@ºgz1=ƒû§Ω5R)ºiÕÆΩsgW='¿∫ÔJ=≈Ëª8W=QSÌΩŸ_™<¡Q4ªUÏAΩµrΩ¬¸!Ω∆ú∑;IêΩΩMΩ⁄|Ω¢»ªœ†=áy—<äﬁΩg¥ù<)À<yn®ª˛4ÅπRÂ</aΩòöÑ;çŒBº†ﬁ@º¬5 ºûKΩÁ€ªIÖ<5På=Vπi<˘ºœ“D;A˘=€q®<€Ω ä∫¬√î=π´~=–Î+=”Ç<-]Ω1
+Ω|	,=Ωj"=4?%Ω˜.FΩHÖ&ºî•¶ª˛ê“<≈TDΩÜ
+äΩ˜TùΩôt‚ªo≤ì<2∫–€àº“™<Ÿf:º≥~–ªÂ‰òº;J<ó¨Í;B‹•<ÎÕ<Ωç–˚<”Ÿ<∂»ÚºO=¥äjΩ≈Ïø∫h/=*Ö< ≈¢ººJ=˘zä<¶\2º$±ó;ê‚;ÈW%º]`6Ω’siΩ˚J‘<∏Ñ6Ω€v∆ºFZt<EÂí:≈="fpºzég=Éé	’“ßªΩ˚-=O!í<Õ*^Ωì{Êªƒ˛àºnöΩ†-Ωâ =]]q;ÎÏ9»¥ÊªE=îΩrq<˝ªµø<–ïHΩ/oΩÀ¨Ω∫P=˜…2Ω¥i!º<—ı:=⁄|pº√&≈<>˘=ÁLc;j<7~·∑ËÓlΩhı5º±Í<f&ΩÔüΩ˝/=4≥=t]<Ÿ‰µº3c™<ü†Nº‰k^ΩS˘E=Ÿæ!ΩESÜ<ﬁ.∏=ÈMΩOÅ∞=&'G=KÍg=ìU=‚Vw=◊=œË“<ç=º∞®<`é·=®j®<B3_=·wc=ÃûÅ<_Ò,Ω˝+=lZΩ∞ÒÀº—vΩä]
+<¯r=mØ<FR<∫*eº¯
+öª°µhªŸËΩ—û‰<Õäº!L=3ølªû6Å<N÷:=Ÿ†ó<¥÷ù;<qΩôÑsº+º¸öºNj=ıB´=o—}ºX6Äºä™+<?îº∆ï'=o~ﬁ:g
+ãª√‡óºΩöºËYç=s™µ<˘e6<—»ºóı*<^ª'∂AºÏJΩ@ñ=º:A<î=ÊR†<ﬁá±;xÓ˛;m ,<Õ¨=D~¶=ÌoÄ=≥âJΩö…j;‹7Ωw©à=ÉoZΩºº˝ôQΩ®<†ÁÖº,%√ºZÔçº˝mı;;¨©º˚€*=U∞ª:Ï<…°∫€îw=ähºlµ(=*ÃÊº$0Ê<›ùºF!í<œ1~º≥s≤ªˇ¿ÛºQ¯á;⁄™ﬁºñwÆ<£G=≈såΩßIºxè>∫ıîºß=WÅn=LôΩò"ºF◊=6ñﬁº√¿£∫†DÁºj‘À<OÛÉº-ΩΩÃô>=|bU99Pë<Læ»ªihàºãh`=Z≈<¸4<ç∂xΩ⁄ﬂo=Ff∫Ω¨øE;n ª.7_ª^L©º˜Ë=ÌR_=)k<¶ëª–Öb;[˚ãΩ”±¯<3ôË8Höﬁ<;ˇÄºí€ûºì·ÄΩëº3Eå<)ÍºÚòj<LE”º:¶oΩı∆≠<Lª&ÿ¨;iÃÑºY‹<Ω/¨Èº◊BΩ8¢?<º7ΩÜ≠≤º¨ë˛<puΩ‘G,Ω∂‡˙<¨∏;æ—Øº·[c=€≤ö<QÊe;1òº§„oΩp|=t§í<ﬁp<b¸/Ω„AÆ;ãYŒªXK•=·N;âå=≠iì<…7¢ªBD<ut;=i≈‹<+ ºﬁ	Ä<˚ÀçºüÂ!=ì;bΩ©~ªBóµ<®q6=Â˜<œù∞ªL≤Ó<ø {=≈üFΩÏO=ÊFÀ<Zã<πa„:¬‹q<∫¯=¡áUºŒ—π<;%ıº‰oΩˇ… Ω§ÑQ;QÜßΩ{àôΩ5§a;Ì(™;f<Æº>Äw=ìΩ¯…ö< ¥<í•ºÄEl=π¡=òS=glmΩ≥Yºr[Å<å{Ω˙±áºï∫z<Lÿñ<n Nº, <≥‰G<x⁄,=MÅuΩﬂâÒ93√º*c=ê{ìª8Û;`€Ü<ÿ$¡=£cΩÁÆ?ΩcZzΩÙ–ÍºóReΩ§ÉS∫ÆxÖΩÎGG<Ó[CΩ|%Ω˛f'<'l˜ºÀÖ'º∑	lΩŸº(g:ΩSÑòΩˆƒœºÊÍ¬<8¿QΩå#Â<I⁄=ÅäΩå∆:∫ıÒΩ»≤çΩ=ºJo8<A◊®;îé—ºÆú<nw<äkXΩQÈ<ÃV5ºX	˜;
+=y¿ØªÖT◊;ã˘≤<>NpΩ∫§=πõ'ΩüG=‰‰∆º«qΩ>iî<KÿeΩ3ëΩóE<]Cø<T·9<Ç9Qº¢n<•K=÷ï/=íÉ‘º§^ÃΩ˜¢&Ω&Ωë<~ÍÊ:È
+Û<:Ã¢<≤Â=ﬁ”Ï<˘‘ºëúŸ;wOÃªÂv4=≠8_ºŒ6§<gP=^H⁄ªUÂΩ¸}5=¯Ø<g?}Ω\=”å9=ÃÅΩ6¢
+=ïÓ<ìàΩ÷Hó;<¬¥=\‘˜º«¸Å∫€πØΩR∑<}%jΩ·˘‹;ZWMΩÿ>ù=(‹¿<¥–<÷»=∏œ≤<ß˙¿<Óo=3≈º√˘‰ºËé;O˝mΩ„)<Jc˝ª¨7√ºÂµŸ<}óΩ<pŒ∑:ΩŸº±zº¡ó=.CΩÚJ;+s°Ω¥=ΩŸhSªtò∏Ωyz}ª &*<fyΩÅnΩrÇ;.º˜lºhÇ´<¨N€<åÑΩ’?ººêº™◊º≥ÙoºÉ∆Œ8ΩZI= bÖºÒ*≠ºxLÑ;'—º¯®®º@F=d»´;ü…∂Ωr≠Õ<ï=>=¸Pº,ƒΩö}ÿºÛˇ;]F√<Îöˆ<‚<gµºÅÚüº∑ån<pæWºÖ’=´ƒΩa◊ºxm Ω¿_B=˜ÆR<.∫ΩHÓ¨=%ç©=:œºAÈØºcõ=Z˝A;Õ∏=Q¬<zù›<—e@<,âπºaâ=ı‰;NÒ\Ωìï<ù‡2Ω¿ª\‚ºCkX=?å•ΩÁŒzªÙ|-ºØ±Ω‹G†<%yªªcñªS8}=¿@fΩ{O=ìÏzΩ©´öºÀZõΩßw8<gy¶ªe¿<<ÆâΩø'<`ﬂ]=<Æ=ÇÆº5£–<yŸa:<M:=g≠≥<∂–gº*πÏº_ÇL<∂Qô<—Rã;’œÿº€p.<«p®<æ1ΩqÙzΩ©Ω&ºCÑΩº&=∏CÏºVxŸº ?©º	˚¥<c;‰ª,ºHA≠º∂œ–<\mZ=Me(º‰ùñ</ì=dA<Å_QΩÔ˚∫ºûOºqgÅº8
+˜<vÄFΩqo§=nNΩ3˜4=çõ˛;çÔwΩºdmΩk— =†—:µ Uºà˛4=S≥K=<ëº\∫¯<®÷Tº{2øº∂ªﬂŒm<BÚ<∏dÖºs£<Ü2Ωp\—<2˘<byµ∫NWº‹¿ª<Jêºï0»;\eáºFîﬁº¡Ãºà1≈º*úÜª|,˝<å˛œº±8¸<ê»TºÿK=›≠<Eÿ,=A}=ıÌºZÌBª ≥&<£9<GçΩ—n
+=^◊@=Út=˘D¬ª¥Yº’<=¥ñÊº≥j˘<NÈ+=‹LÚ<ˆΩ(µΩØm)º‹ÊQΩ˘'=”ö;s'Ω 5QΩ»ôÚ=S%=ª¡ºº˝À<˜<<å^:=Àñà=±POº(ºFnº4/Ω;µIΩTç<Y"=)∂Ωqöä=g…<È–ºLZΩåÒÚ:Ò /=œpÛª\Û≠Ωt!âª.8=EÖÁºFïèª(e¬<Ìé‹<°∫ºåª=›ÿ3<˘õΩVπØª1\√ºÀ‚⁄<Eu≈ºz‡ÄΩkuvªƒ§Ñ=Sìº<I.¿ºA∞=ywtºFS;|Âñ<L^=ac=≈_VΩÆD;˘û=—lÅºäÅΩ/S›∫ˆ‹9øﬂ£=ãı∂<gî‹ª„8<CõªN§Pº˘ˆhº]mººÿå˛º©–çΩ–1=‘ôàΩúcd<åÜΩ˚8VΩ"≥}=.˜;X3|ºâΩLå=2•»ºGjµº3ﬂº´J≥<‹^ÈΩ—j=AG®ΩÓU=°Ä˜;ªÈ:=Ÿ<JÒ∑”ÎΩ±!:º}æ©<Óœ6Ω7ªπªì•ºVPd<#îïºÃiΩ2√ΩWΩº%Ê≥=˘D=ÏtáΩ…ÖG=|ÀÄ<ôÅ;Øéù<‘Õ=†ΩÏsMºáõ!ΩO¸›ªÔ∑≠:dlYπ¡¸Ä<ãﬂ;!=Ÿ}LºNÑ;—Ô=;Î
+ƒ;‹Á<"/eΩeá;yBµ<`ç=¬ñ< nâ<6!¡ºùÒÅΩB\==†N8Ω Œ-ΩÀ4=Jéœ;çπ<º3¿nΩ·[òΩG`qΩ•§º1ê7<E¸å<:[ú<8ü=ª'ºT÷ÀªˆÙ£∫EB =ΩÍï<∑Pû∫úºæªÀäxº≥î$ºV@K<¶®æºVí»<”É.Ω±s¨πÀá<Ô√=ËΩƒ<aæGºΩÂ<}m·ºë.‰<–xº◊ﬁˆ∫P¿ºº%£/Ω.πºœéãº‡@÷ºÈõ=VnΩÈ«JºÀ3==•-Ô<Õ€Ü	ˆ≤≈ºgÒ<Äõãº™fìΩÇáÎ<¸ﬁºÇi¸º
+HΩyÉ=w3ªnÌº~Ü√ºÿJΩ¿=ìùëº,[;π`¯º√\;˜7ºlƒ<˙íàΩñÁ±º¡é’ªÉ^ö<¥ìªñ™ÿ<^p=Á‚ìºO-˛<\Ë<B⁄ÓºÈ≤çºiúºï~¶º˛}±Ωã∞üª'ä{=™•æ<H◊◊∫ i¶<T:Ω ;UΩb‚9=Ç<†'=ÍÀ<Zë}ºMk+=`π@=øë<ÿª</Ñ=On:=µc÷;ûµ=–®;8¥ƒ=~@=B„ =≥BG=¥B<8ÄΩ(*É=O´ˇº—éΩs+ñº˙˙ªD±‹<Û†Y=€i≥:)º’:ºO≈;ØõûΩTyœ;$.Óª¡≤=~zÆ<¢Å=VY=≈$ª<{6ﬂ<ÿåΩÚC=û¯¸;UNJΩÄƒÖ=m¡a=.sõº–=ªŒ|%=∂Ñ-ºÅU@=ø;'…A∫÷î?ªçâ2<Ä∫z˙,=ós3º®ÓGΩ¶ÇX<1>;<ü≤ºZôaΩi!_Ω@Mª8b˝<4ÿ<C≤Ãº6õêº⁄áÍºΩ¡I=ÈÔ8=¨#=V1#ΩHïº
+òfºì=5=Ë]úΩâ9õ<4åº¥cy9¯°9º∏ˆ¥;ÁHΩ¥'íº”ôΩAbæ<Œv∂ºNÍ=QÓ=è√H=E^º¸^ä=¿‚AΩ§ÆG=¸”ô;≤®Œ;Æ§Í∫¸4<¸§oΩ¡Ô+ΩoÂ7Ω¶(c=|(·<H…uº¶Aπº—π~º•¯Y<:#í;¥oß=î∑†<WÃºaH≈<∫bºÒì≠ªÖY¢∫I Z=¯CJ;T¸rΩπ˝=¶ZzºXB”ªp¨;ü!º[ãT=5=‰R¡<èlº!˝@=ƒh≠Ω=≥M<∏§ºˆ;}=†º˚O=ÖÅÜ=uÙ}ª⁄Ω≥ºTä~º«ˆÄª¸ÙOºNé<‹»ºr6Úºﬂ€?ΩÆ◊ºÚ2¶πá05Ωœ6wºx{ËºH"ΩyÖ¸<≤iÔ;~"9 !S<˜ÙΩvPΩà$âΩ†‹=^Ê+Ω»∂)<GRª‚å∏º^,ª‘å˙;yP[<@(?ΩØ=æa?<8åôºZˆ˛ªozº2ü∂ºŒA=O√O;¢úº"ıéºn›C<^7ü=fNòª∑˚p=Iøï:Ûœ≥<—ı¶<Sê<içzºwπ—ºå≠nª¯›∫ykR=fîÅΩ≥™b<_d<^5R=üÎ<jı¶ºû(≤ºÊi!ª}7xº)ã<4=∫<.Ø= gº&Z¶º2-éº–Ë‰ª@=YºıªΩîPºçŸ‘<c÷MΩ€◊_ΩÒ©¿<W=ñ‹ΩﬁM˛<mæÌº =›Ô±< B‡;“ec=L7=t˜<ÚQΩöûåº≠Úa= ÊxΩ
+V∞ºtâ©<lit-gpt/tutorials/inference.mdlit-gpt/tutorials/download_vicuna.mdlit-gpt/tutorials/neurips_challenge_quickstart.mdlit-gpt/tutorials/oom.mdlit-gpt/tutorials/pretrain_openwebtext.mdlit-gpt/tutorials/download_falcon.mdlit-gpt/tutorials/prepare_dataset.mdlit-gpt/tutorials/download_tinyllama.mdlit-gpt/tutorials/download_stablelm.mdlit-gpt/tutorials/download_longchat.mdlit-gpt/tutorials/download_pythia.mdlit-gpt/tutorials/resource-tables.mdlit-gpt/tutorials/finetune_adapter.mdlit-gpt/tutorials/pretrain_redpajama.mdlit-gpt/tutorials/download_phi15.mdlit-gpt/tutorials/download_openllama.mdlit-gpt/tutorials/convert_lit_models.mdlit-gpt/tutorials/download_freewilly_2.mdlit-gpt/tutorials/download_mistral.mdlit-gpt/tutorials/quantize.mdlit-gpt/tutorials/download_redpajama_incite.mdlit-gpt/tutorials/download_code_llama.mdlit-gpt/tutorials/evaluation.mdlit-gpt/tutorials/download_llama_2.mdlit-gpt/tutorials/finetune_lora.mdlit-gpt/tutorials/finetune_full.md¿„     ﬁ„     ‰     3‰     K‰     t‰     ò‰     º‰     „‰     	Â     /Â     SÂ     wÂ     úÂ     √Â     ÊÂ     Ê     4Ê     ]Ê     ÇÊ     üÊ     ÕÊ     ıÊ     Á     9Á     [Á     }Á     Ë™            ¿´            }Á            t  
+document ˇˇˇˇˇˇˇˇˇ*string8
+5	embedding ˇˇˇˇˇˇˇˇˇ*fixed_size_list:float:7688
+source ˇˇˇˇˇˇˇˇˇ*string8*ˆ
+embedding_functionsﬁ[
+  {
+    "name": "sentence-transformers",
+    "model": {
+      "name": "all-distilroberta-v1",
+      "device": "cuda",
+      "normalize": true
+    },
+    "source_column": "document",
+    "vector_column": "embedding"
+  }
+]   Ö— ’–˝È        LANC
