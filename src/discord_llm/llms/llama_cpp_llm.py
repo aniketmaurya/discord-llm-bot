@@ -50,7 +50,7 @@ class LlamaCppLLM:
                 **self.kwargs,
             )
 
-        prompt = f"""Answer the given question based on the given context. If you don't know the answer then respond with "I couldn't figure that out", don't make up answer and avoid wrong answers.
+        prompt = f"""Think step-by-step and answer the given question based on the given context. If you don't know the answer then respond with "I couldn't figure that out", don't make up answer and avoid wrong answers.
         ```{document[:self.n_ctx-50]}```
         ----
         Question: {query}

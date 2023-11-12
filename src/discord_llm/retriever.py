@@ -1,15 +1,8 @@
 from chromadb.utils import embedding_functions
 
-from .db import create_db
-from .pl_db import MODEL_NAME, Document, get_collection, get_table
+from .db import MODEL_NAME, Document, get_collection, get_table
 
 DEFAULT_DB_ENGINE = "lancedb"
-
-
-def create_retriever():
-    db, documents, embeddings = create_db()
-    retriever = db.as_retriever()
-    return retriever
 
 
 class LightningRetriever:
@@ -25,7 +18,7 @@ class LightningRetriever:
         elif engine_type == "lancedb":
             self.table = get_table()
 
-    def chroma_engine(self, query: str):
+    def _run_chroma_engine(self, query: str):
         query_texts = [query]
         query_embeddings = self.sentence_transformer_ef(query_texts)
         result = self.collection.query(query_embeddings=query_embeddings, n_results=1)
@@ -36,7 +29,7 @@ class LightningRetriever:
             "source": result["metadatas"][0][0]["source"],
         }
 
-    def lance_engine(self, query: str):
+    def _run_lance_engine(self, query: str):
         result: Document = (
             self.table.search(query, vector_column_name="embedding")
             .limit(1)
@@ -50,6 +43,6 @@ class LightningRetriever:
 
     def __call__(self, query: str):
         if self.engine_type == "lancedb":
-            return self.lance_engine(query=query)
+            return self._run_lance_engine(query=query)
         else:
-            return self.chroma_engine(query=query)
+            return self._run_chroma_engine(query=query)
